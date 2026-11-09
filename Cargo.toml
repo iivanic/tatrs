@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/tatrs-core", "crates/tatrs-cli"]
+members = ["crates/tatrs-core", "crates/tatrs-cli", "crates/tatrs-mcp"]
 resolver = "3"
 
 [workspace.package]

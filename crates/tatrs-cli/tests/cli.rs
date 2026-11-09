@@ -1,5 +1,6 @@
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 use serde_json::Value;
 
@@ -838,6 +839,73 @@ fn check_fix_removes_stale_and_corrupt_claims() {
         .collect();
     assert!(!codes.contains(&"W0402"), "{codes:?}");
     assert!(!codes.contains(&"W0403"), "{codes:?}");
+}
+
+#[test]
+fn mcp_serves_json_rpc_over_stdio() {
+    let tmp = scratch();
+    init(tmp.path());
+    let task = create_agent(tmp.path(), "MCP task", Some("## Acceptance\n\n- [ ] done"));
+    let id = task["id"].as_str().unwrap().to_owned();
+
+    let mut child = tatrs()
+        .current_dir(tmp.path())
+        .args(["mcp", "--allow-write"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        for message in [
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "test"}},
+            }),
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+            serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                "params": {"name": "list_tasks", "arguments": {"status": "all"}},
+            }),
+        ] {
+            writeln!(stdin, "{message}").unwrap();
+        }
+    }
+    drop(child.stdin.take());
+
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "server failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let body = String::from_utf8(output.stdout).unwrap();
+    let responses: Vec<Value> = body
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(responses.len(), 3, "{responses:?}");
+    assert_eq!(responses[0]["result"]["serverInfo"]["name"], "tatrs");
+    assert!(
+        responses[1]["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tool| tool["name"] == "create_task")
+    );
+
+    let listed: Value = serde_json::from_str(
+        responses[2]["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(listed["tasks"].as_array().unwrap().len(), 1);
+    assert_eq!(listed["tasks"][0]["id"], id);
 }
 
 #[test]

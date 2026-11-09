@@ -87,6 +87,9 @@ pub enum Command {
     /// Release a task lease
     Release(ReleaseArgs),
 
+    /// Serve the Model Context Protocol over stdio
+    Mcp(McpArgs),
+
     /// Validate the tasks/ database
     Check(CheckArgs),
 
@@ -308,6 +311,13 @@ pub struct ReleaseArgs {
     /// Lease token returned by `claim`
     #[arg(long, value_name = "TOKEN")]
     pub token: String,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct McpArgs {
+    /// Expose mutating tools (create_task, claim_task, release_task)
+    #[arg(long)]
+    pub allow_write: bool,
 }
 
 #[derive(Debug, Clone, Args)]

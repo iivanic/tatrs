@@ -6,6 +6,7 @@ pub mod find;
 pub mod id;
 pub mod init;
 pub mod ls;
+pub mod mcp;
 pub mod new;
 pub mod ready;
 pub mod refs;
@@ -51,6 +52,7 @@ pub fn dispatch(cli: Cli) -> Result<(), AppError> {
         Command::Ready(args) => ready::run(&global, &args),
         Command::Claim(args) => claim::run(&global, &args),
         Command::Release(args) => release::run(&global, &args),
+        Command::Mcp(args) => mcp::run(&global, &args),
         Command::Check(args) => check::run(&global, &args),
         Command::Version => version::run(&global),
     }

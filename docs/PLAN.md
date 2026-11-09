@@ -165,9 +165,9 @@ all 94 upstream tasks parse and render back byte-identically (LF-normalized).
 shell completions, man page, `tatrs-mcp` read-only tools.
 **Landed 2026-11-09:** acceptance severity matrix (D-001); `ready` with `--explain`; `claim`,
 `release`, and `claim --status` over the git-common-dir lease store with per-task locks
-(D-002/D-003); claim diagnostics and `check --fix`; `ref` ignore support; `scripts/agent-flow.ps1`
-proving the JSON-only loop.
-**Remaining:** shell completions, man page, `tatrs-mcp`.
+(D-002/D-003); claim diagnostics and `check --fix`; `ref` ignore support; `mcp` stdio server with
+read-only defaults and `--allow-write`; `scripts/agent-flow.ps1` proving the JSON-only loop.
+**Remaining:** shell completions, man page.
 **Done when:** an end-to-end script lists ready work, claims, edits, closes, and unclaims using only
 JSON, with no prompts. `scripts/agent-flow.ps1` covers this path.
 

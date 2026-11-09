@@ -1,0 +1,15 @@
+[package]
+name = "tatrs-mcp"
+description = "MCP stdio adapter for tatrs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+tatrs-core = { path = "../tatrs-core" }
+
+[dev-dependencies]
+tempfile.workspace = true

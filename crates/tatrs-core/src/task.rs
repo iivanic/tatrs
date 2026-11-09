@@ -366,6 +366,27 @@ pub fn split_tags(raw: &str) -> Vec<String> {
         .collect()
 }
 
+/// Normalize a caller-supplied body: strip a BOM, convert CRLF to LF, and
+/// guarantee one leading blank line and a trailing newline. Shared by the CLI
+/// and the MCP adapter so both write identical bytes.
+pub fn normalize_body(raw: &str) -> String {
+    let mut body = raw
+        .trim_start_matches('\u{feff}')
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
+
+    if !body.is_empty() {
+        if !body.starts_with('\n') {
+            body.insert(0, '\n');
+        }
+        if !body.ends_with('\n') {
+            body.push('\n');
+        }
+    }
+
+    body
+}
+
 /// True for `- [ ] text`, `* [x] text`, and friends, where `text` is non-empty.
 fn checkbox_has_text(line: &str) -> bool {
     let Some(rest) = line.strip_prefix('-').or_else(|| line.strip_prefix('*')) else {

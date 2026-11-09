@@ -119,21 +119,6 @@ fn task_body(args: &NewArgs) -> Result<String, AppError> {
         String::new()
     };
 
-    // The format is LF and BOM-free; normalize at the write boundary so callers
-    // can pipe in files produced on any platform.
-    let mut body = raw
-        .trim_start_matches('\u{feff}')
-        .replace("\r\n", "\n")
-        .replace('\r', "\n");
-
-    if !body.is_empty() {
-        if !body.starts_with('\n') {
-            body.insert(0, '\n');
-        }
-        if !body.ends_with('\n') {
-            body.push('\n');
-        }
-    }
-
-    Ok(body)
+    // The format is LF and BOM-free; the core normalizer is shared with MCP.
+    Ok(tatrs_core::task::normalize_body(&raw))
 }

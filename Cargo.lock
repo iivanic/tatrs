@@ -394,6 +394,7 @@ dependencies = [
  "clap",
  "serde_json",
  "tatrs-core",
+ "tatrs-mcp",
  "tempfile",
 ]
 
@@ -406,6 +407,15 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
+]
+
+[[package]]
+name = "tatrs-mcp"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tatrs-core",
+ "tempfile",
 ]
 
 [[package]]

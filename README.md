@@ -19,9 +19,9 @@ tasks/
 ## Status
 
 Working today: `init`, `new`, `ls` (TQL queries, batch updates, `--dry-run`), `show`, `find`, `id`,
-`ref`, `summary`, `todo`, `ready`, `claim`/`release`, `check`, `version`. Planned: `check --fix`,
-completions, man page, and the MCP server. See `docs/PLAN.md`, `docs/QUERY.md`, and
-`docs/CLAIMS.md`.
+`ref`, `summary`, `todo`, `ready`, `claim`/`release`, `check`, `mcp`, `version`. Planned: shell
+completions and a man page. See `docs/PLAN.md`, `docs/QUERY.md`, `docs/CLAIMS.md`, and
+`docs/MCP.md`.
 
 ## Build
 
@@ -62,6 +62,8 @@ $ tatrs check --strict
 - `docs/CONCLUSION.md` — why this exists, what is preserved, what changes.
 - `docs/PLAN.md` — architecture, milestones, CLI and exit-code contracts.
 - `docs/QUERY.md` — TQL and the update language, with precedence and type rules.
+- `docs/CLAIMS.md` — leases, readiness, and the agent workflow.
+- `docs/MCP.md` — the stdio MCP server and its tools.
 - `docs/FORMAT.md` — the normative `TASK.md` grammar, including upstream quirks.
 - `docs/JSON.md` — versioned output schema.
 - `AGENTS.md` — how to work on this repo (human or agent).
