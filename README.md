@@ -1,5 +1,7 @@
 # tatrs
 
+[![CI](https://github.com/iivanic/tatrs/actions/workflows/ci.yml/badge.svg)](https://github.com/iivanic/tatrs/actions/workflows/ci.yml)
+
 A clean-room Rust reimplementation of [`tsoding/tatr`](https://github.com/tsoding/tatr) —
 a git-native task tracker where every task is a directory with a `TASK.md` file.
 

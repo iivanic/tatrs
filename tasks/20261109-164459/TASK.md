@@ -11,7 +11,7 @@ The binary works locally, but distribution is missing: no CI, no release artifac
 
 ## Acceptance
 
-- [ ] GitHub Actions CI runs `fmt --check`, `clippy -D warnings`, and tests on ubuntu-latest, macos-latest, and windows-latest
+- [x] GitHub Actions CI runs `fmt --check`, `clippy -D warnings`, and tests on ubuntu-latest, macos-latest, and windows-latest
 - [ ] A tag triggers release builds for `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, and `x86_64-pc-windows-msvc`, uploaded with SHA-256 checksums
 - [x] `cargo install --path crates/tatrs-cli` and prebuilt-binary installs are documented
 - [ ] a container image suitable for agent sandboxes is published or buildable from the repo
@@ -19,16 +19,18 @@ The binary works locally, but distribution is missing: no CI, no release artifac
 
 ## Progress
 
-Started 2026-11-09:
+2026-11-09:
 
-- `.github/workflows/ci.yml`: matrix over ubuntu/macos/windows; fmt, clippy `-D warnings`,
-  `cargo test --locked`, release build. YAML validated with PyYAML; not yet executed.
+- Repository published at https://github.com/iivanic/tatrs (public, MIT, topics set).
+- First CI run [42661035854](https://github.com/iivanic/tatrs/actions/runs/42661035854) passed on
+  ubuntu-latest, macos-latest, and windows-latest: fmt, clippy `-D warnings`, tests, release build.
+  Badge added to the README; checkout action bumped to v5 for the Node 24 runner.
 - `.github/workflows/release.yml`: tag `v*` builds the three targets, packages with
-  `scripts/package-release.ps1`, uploads artifacts, publishes a release with checksums.
+  `scripts/package-release.ps1`, uploads artifacts, publishes a release with checksums. Not yet
+  triggered — the first tag is the remaining verification.
 - `scripts/package-release.ps1` exercised on Windows: produces the zip (binary, README, LICENSE) and
   a matching `.sha256`.
 - `Dockerfile` (multi-stage, non-root, `/work`) and `.dockerignore`. Not built locally: the Docker
-  daemon is not running on this machine.
+  daemon is not running on this machine; the image has not been published.
 - `docs/RELEASING.md` documents the tag flow, manual packaging, verification, and known gaps.
 - Release build (`cargo build --release`) prints `commit 7c3e27c` from `tatrs version`.
-- Docs cannot be closed from a local checkout: CI and the release workflow need a first push/tag.
