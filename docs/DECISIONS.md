@@ -7,6 +7,7 @@ options, the choice, the exact behaviour that follows, and what would make us re
 |-|-|-|-|
 | D-001 | Acceptance enforcement level | accepted | 2026-11-09 |
 | D-002 | Claim storage and lifecycle | accepted | 2026-11-09 |
+| D-003 | Claim visibility: status command, no published claims | accepted | 2026-11-09 |
 
 ---
 
@@ -226,9 +227,89 @@ are advisory: a process that ignores the protocol can still work on a claimed ta
 
 ### Revisit if
 
-- Agents commonly run across several machines or clones; then add an opt-in commit-based
-  "announcement" (`tatrs claim --publish` writes `OWNER` for humans) or a queue integration.
+- Agents commonly run across several machines or clones; then add a queue integration rather than
+  publishing claims (see D-003).
 - Claim churn exceeds TTL accuracy (very long tasks); then heartbeat wiring belongs in the
   orchestrator, not in the CLI.
 - Windows path resolution of `.git` files proves unreliable in linked worktrees; then fall back to
   `--claims-dir` configuration.
+
+---
+
+## D-003: how do humans see active claims?
+
+### Context
+
+D-002 keeps leases out of git, which means a reviewer looking at a PR cannot see that an agent is
+currently executing a task. The obvious remedy — an opt-in `tatrs claim --publish` that writes
+`OWNER`/`CLAIMED`/`EXPIRES` into `TASK.md` — reintroduces exactly the problems D-002 rejected:
+commit churn, conflicts with body edits, stale claims in history, and a dirty working tree for the
+duration of a run.
+
+### Decision
+
+**No published claims.** The lease stays local to the clone, and `tatrs claim --status` is the
+visibility mechanism. A reviewer who needs to know runs one command; nothing about the task changes.
+
+### Exact behaviour
+
+`tatrs claim --status` reads the claim store, never writes, and works under `--read-only`.
+
+```
+$ tatrs claim --status
+TASK                 OWNER     STATE    EXPIRES      HOST   RUN
+20261109-123637      agent-3   live     in 1h 12m    desk   dsh-42
+20261109-123637-01   agent-2   expired  3h 04m ago   desk   dsh-41
+```
+
+- **Ordering:** live claims first, soonest expiry first; then expired claims, most recently expired
+  first. Expired rows are shown rather than hidden — they are the ones a human needs to clean up.
+- **State:** `live` when `expires_at > now`, `expired` otherwise. Expiry is evaluated on read; there
+  is no daemon and no background sweep.
+- **Filters:** `--task <HUID>` (repeatable) restricts the listing. `--fail-if-empty` exits `5` when
+  nothing is claimed, for scripts that wait on quiescence.
+- **Exit codes:** `0` normally; `5` with `--fail-if-empty` and no claims; `1` when the claim store
+  cannot be read. Corrupt claim files are reported to stderr and skipped, never fatal for `status`
+  (they are `check`'s problem).
+- **JSON:**
+
+```json
+{"schema": 1, "claims": [
+  {"task": "20261109-123637", "owner": "agent-3", "state": "live",
+   "acquired_at": "2026-11-09T13:41:02Z", "expires_at": "2026-11-09T15:41:02Z",
+   "remaining_seconds": 4320, "host": "desk", "pid": 41232, "run": "dsh-42"}
+]}
+```
+
+`remaining_seconds` is negative once expired, so a consumer needs no clock of its own.
+- **Not part of status:** releasing, stealing, or extending a claim. Those require the token and stay
+  with `claim`/`release`; `--status` is a read-only view.
+
+### Consequences
+
+**Positive.** No new file format, no commit churn, and no way for a stale lease to leak into
+history. `status` answers both questions at once: "who is running what" and "what died and needs
+cleanup". It is cheap enough to run before every manual task pick.
+
+**Negative.** A PR reviewer with only a browser cannot see claims; they need a clone and the CLI, or
+CI output that runs `tatrs claim --status --json`. Claims also remain invisible across machines
+(D-002), so `status` on a different clone will show nothing — it is a local view, and the help text
+must say so.
+
+**Mitigation.** `check` continues to report dangling/expired claim files, so a repo that never runs
+`status` still surfaces orphans in its normal health check.
+
+### Rejected alternatives
+
+- **`--publish` into `TASK.md`** — reintroduces commit churn, conflicts, and stale history; a lease
+  that outlives a crash becomes a permanent lie in the task file.
+- **Claim state in PR comments / CI artifacts** — external systems, extra auth, and it still goes
+  stale.
+- **A local web UI** — out of scope; `--json` covers dashboards built elsewhere.
+
+### Revisit if
+
+- Reviewers routinely need claim state while reviewing; then emit `claim --status --json` as a CI
+  artifact or PR check summary — not as committed task data.
+- `status` listings grow beyond a screen; then add `--limit` and a `--since` filter rather than a
+  new store.

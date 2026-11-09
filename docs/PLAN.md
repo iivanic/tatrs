@@ -100,7 +100,7 @@ Global: `--json`, `--porcelain`, `--quiet`, `--no-color`, `--cwd <path>`, `--len
 | `summary` | counts by status/tag/priority | `--json` |
 | `check` | validate tree | `--fix`, `--strict`, `--json` |
 | `ready` | runnable tasks (M2) | `--json`, `--limit`, `--explain` |
-| `claim` | lease a task (M2) | `<HUID>`, `--owner`, `--ttl`, `--run`, `--refresh`, `--json` |
+| `claim` | lease a task, or inspect leases (M2) | `<HUID>`, `--owner`, `--ttl`, `--run`, `--refresh`, `--status`, `--task`, `--fail-if-empty`, `--json` |
 | `release` | drop a lease (M2) | `<HUID>`, `--token`, `--json` |
 | `todo` | convert `TODO:` comments (M2) | files, `-y`, `--dry-run`, `-t` |
 | `mcp` | stdio MCP server (M4) | `--allow-write` |
@@ -136,8 +136,8 @@ unless `--fail-if-empty`, which returns `5`.
   truncated. Temp files are named `.tmp-<pid>-<rand>` and cleaned by `check --fix`.
 - **Claims:** leases live outside the working tree, under `<git-common-dir>/tatrs/claims/`, so all
   worktrees of one clone see them and nothing is ever committed. `ready` excludes unexpired claims
-  and `wip`; expiry is evaluated on read. See `docs/DECISIONS.md` D-002 for the protocol and the
-  explicit cross-machine limitation.
+  and `wip`; expiry is evaluated on read. Humans inspect leases with `tatrs claim --status`
+  (`docs/DECISIONS.md` D-002 and D-003), which shows live claims first and expired ones for cleanup.
 
 ## 6. Milestones
 
@@ -204,5 +204,5 @@ PR the low-risk fixes to `tsoding/tatr` (`-y` on `todo`, `--json`, atomic writes
   error under `--strict`, which CI uses)
 - Do we need a `TASKS.md` index artifact for PR review, or is `tatrs summary` enough?
 - Cross-machine coordination: out of scope until someone needs it; the local lease is per clone
-  (`docs/DECISIONS.md` D-002). What is the cheapest opt-in that would help — publishing `OWNER` on
-  claim, or a queue integration?
+  (`docs/DECISIONS.md` D-002). If it becomes necessary, the cheapest opt-in is a queue integration —
+  publishing claims into `TASK.md` is rejected by D-003.
