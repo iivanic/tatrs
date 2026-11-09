@@ -98,12 +98,12 @@ Global: `--json`, `--porcelain`, `--quiet`, `--no-color`, `--cwd <path>`, `--len
 | `id` | current task HUID (inside a task dir) | |
 | `ref` | find references to a HUID | `[HUID]`, `--fail-if-empty`, `--json` |
 | `summary` | counts by status, tag, and priority | `-c/--closed`, `--json` |
-| `check` | validate tree | `--strict`, `--json` (M2: `--fix`) |
+| `check` | validate tree | `--strict`, `--fix`, `--json` |
 | `ready` | runnable tasks (M2) | `--json`, `--limit`, `--explain` |
-| `claim` | lease a task, or inspect leases (M2) | `<HUID>`, `--owner`, `--ttl`, `--run`, `--refresh`, `--status`, `--task`, `--fail-if-empty`, `--json` |
+| `claim` | lease a task, or inspect leases (M2) | `<HUID>`, `--owner`, `--ttl`, `--run`, `--token`, `--status`, `--task`, `--fail-if-empty`, `--json` |
 | `release` | drop a lease (M2) | `<HUID>`, `--token`, `--json` |
 | `todo` | convert `TODO:` comments | `FILES...`, `-t`, `-s`, `-y`, `--dry-run`, `--json` |
-| `mcp` | stdio MCP server (M4) | `--allow-write` |
+| `mcp` | stdio MCP server (M2) | `--allow-write` |
 
 Examples:
 
