@@ -177,6 +177,9 @@ JSON, with no prompts. `scripts/agent-flow.ps1` covers this path.
 Static builds for `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`;
 GitHub Actions matrix; `cargo install` instructions; `--version` includes commit; Docker image for
 agent sandboxes.
+**In progress 2026-11-09:** CI matrix, tag-driven release workflow, packaging script (tested on
+Windows), `Dockerfile`, `docs/RELEASING.md`. First CI run, first tagged release, and a real
+`docker build` are pending — the local Docker daemon was unavailable.
 
 ### M4 — upstream and ecosystem
 PR the low-risk fixes to `tsoding/tatr` (`-y` on `todo`, `--json`, atomic writes), publish

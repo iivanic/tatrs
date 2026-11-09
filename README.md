@@ -40,6 +40,24 @@ tatrs completions bash > ~/.local/share/bash-completion/completions/tatrs
 tatrs man > tatrs.1
 ```
 
+Prebuilt binaries are published with each `v*` tag as
+`tatrs-<version>-<target>.zip` plus a matching `.sha256`
+(`x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`).
+Replace `OWNER` with the repository owner:
+
+```console
+curl -LO https://github.com/OWNER/tatrs/releases/download/v0.1.0/tatrs-0.1.0-x86_64-unknown-linux-musl.zip
+sha256sum -c tatrs-0.1.0-x86_64-unknown-linux-musl.zip.sha256
+unzip tatrs-0.1.0-x86_64-unknown-linux-musl.zip -d ~/.local/bin
+```
+
+A container image for agent sandboxes can be built from the repo:
+
+```console
+docker build -t tatrs:dev .
+docker run --rm -v "$PWD:/work" tatrs:dev ls
+```
+
 ## Use
 
 ```console
