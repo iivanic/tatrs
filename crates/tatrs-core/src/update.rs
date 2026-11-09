@@ -107,6 +107,9 @@ impl Update {
             }
         }
 
+        if changed {
+            task.ensure_reserved_properties();
+        }
         changed
     }
 

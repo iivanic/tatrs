@@ -77,6 +77,71 @@ A single task object. When `--id` refers to an existing task, the command prints
 A single task object, including `body`. `--path-only` prints the relative path as plain text; `--raw`
 prints the file bytes and is not valid JSON.
 
+## `tatrs find --json`
+
+A single task object, like `show`. `--path-only` prints the relative path as plain text.
+
+## `tatrs id --json`
+
+```json
+{"schema": 1, "id": "20261109-133012"}
+```
+
+## `tatrs ref --json`
+
+```json
+{
+  "schema": 1,
+  "huid": "20261109-133012",
+  "references": [
+    {"path": "src/main.c", "line": 12, "text": "// TASK(20261109-133012): later"}
+  ]
+}
+```
+
+References are repository-relative, forward-slash separated, and sorted by path then line. `.git`
+and binary files are skipped. An empty array is a success; `--fail-if-empty` makes it exit `5`.
+
+## `tatrs summary --json`
+
+```json
+{
+  "schema": 1,
+  "status": "OPEN",
+  "total": 3,
+  "untagged": 0,
+  "tags": [
+    {"tag": "agents", "count": 2, "description": null},
+    {"tag": "cli", "count": 1, "description": null}
+  ],
+  "priorities": [
+    {"priority": 100, "count": 3}
+  ]
+}
+```
+
+`tags` is sorted by count descending, then name. `priorities` is sorted by priority descending.
+`description` comes from the optional `tasks/tags` file and is `null` when absent.
+
+## `tatrs todo --json`
+
+Preview (no `--yes`):
+
+```json
+{"schema": 1, "dry_run": true, "todos": [
+  {"file": "src/main.c", "line": 12, "title": "handle argc"}
+]}
+```
+
+Write (`--yes`):
+
+```json
+{"schema": 1, "created": [ <task object>, ... ], "files": ["src/main.c"]}
+```
+
+`todo` never prompts: without `--yes` it previews and exits `0`; `--yes` rewrites the files. The
+marker is replaced in place, so prefixes, suffixes, and line endings are preserved.
+
 ## `tatrs check --json`
 
 ```json

@@ -476,6 +476,105 @@ fn update_refuses_to_rewrite_a_malformed_task() {
 }
 
 #[test]
+fn find_and_id_work_on_closed_tasks() {
+    let tmp = scratch();
+    init(tmp.path());
+    let created = create(tmp.path(), "Closed one", &["bug"], 10);
+    let id = created["id"].as_str().unwrap().to_owned();
+    let rel = created["path"].as_str().unwrap();
+
+    run_in(tmp.path(), &["ls", "-u", "close", &id]);
+
+    let found = json(&run_in(tmp.path(), &["find", &id, "--json"]));
+    assert_eq!(found["status"], "CLOSED");
+
+    let path_only = run_in(tmp.path(), &["find", &id, "--path-only"]);
+    assert_eq!(stdout(&path_only).trim(), rel);
+
+    let task_dir = tmp.path().join(rel).parent().unwrap().to_path_buf();
+    let inside = run_in(&task_dir, &["id"]);
+    assert_eq!(stdout(&inside).trim(), id);
+
+    let outside = run_in(tmp.path(), &["id"]);
+    assert_eq!(outside.status.code(), Some(2));
+}
+
+#[test]
+fn ref_finds_references_and_can_fail_when_empty() {
+    let tmp = scratch();
+    init(tmp.path());
+    let created = create(tmp.path(), "Referenced", &["bug"], 10);
+    let id = created["id"].as_str().unwrap().to_owned();
+
+    std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+    std::fs::write(
+        tmp.path().join("src/lib.rs"),
+        format!("// see TASK({id}): details\n"),
+    )
+    .unwrap();
+
+    let output = json(&run_in(tmp.path(), &["ref", &id, "--json"]));
+    assert_eq!(output["huid"], id);
+    let references = output["references"].as_array().unwrap();
+    assert_eq!(references.len(), 1);
+    assert_eq!(references[0]["path"], "src/lib.rs");
+    assert_eq!(references[0]["line"], 1);
+
+    let missing = run_in(tmp.path(), &["ref", "20260101-000000", "--fail-if-empty"]);
+    assert_eq!(missing.status.code(), Some(5));
+}
+
+#[test]
+fn summary_reports_open_then_closed() {
+    let tmp = scratch();
+    init(tmp.path());
+    create(tmp.path(), "A", &["bug"], 10);
+    let b = create(tmp.path(), "B", &["bug", "ui"], 20);
+    run_in(
+        tmp.path(),
+        &["ls", "-u", "close", b["id"].as_str().unwrap()],
+    );
+
+    let open = json(&run_in(tmp.path(), &["summary", "--json"]));
+    assert_eq!(open["status"], "OPEN");
+    assert_eq!(open["total"], 1);
+    assert_eq!(open["tags"][0]["tag"], "bug");
+    assert_eq!(open["tags"][0]["count"], 1);
+
+    let closed = json(&run_in(tmp.path(), &["summary", "-c", "--json"]));
+    assert_eq!(closed["status"], "CLOSED");
+    assert_eq!(closed["total"], 1);
+    assert_eq!(closed["priorities"][0]["priority"], 20);
+}
+
+#[test]
+fn todo_previews_then_converts_and_is_idempotent() {
+    let tmp = scratch();
+    init(tmp.path());
+    let file = tmp.path().join("main.c");
+    let original = "int main(void) {\n    // TODO: first\n    // TODO: second\n}\n";
+    std::fs::write(&file, original).unwrap();
+
+    let preview = run_in(tmp.path(), &["todo", "main.c"]);
+    assert!(preview.status.success(), "{}", stderr(&preview));
+    assert!(stdout(&preview).contains("would create 2 task(s)"));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
+
+    let blocked = run_in(tmp.path(), &["todo", "main.c", "-y", "--read-only"]);
+    assert_eq!(blocked.status.code(), Some(2));
+
+    let written = json(&run_in(tmp.path(), &["todo", "main.c", "-y", "--json"]));
+    assert_eq!(written["created"].as_array().unwrap().len(), 2);
+
+    let rewritten = std::fs::read_to_string(&file).unwrap();
+    assert!(rewritten.contains("TASK("), "{rewritten}");
+    assert!(!rewritten.contains("TODO:"), "{rewritten}");
+
+    let again = json(&run_in(tmp.path(), &["todo", "main.c", "-y", "--json"]));
+    assert!(again["created"].as_array().unwrap().is_empty());
+}
+
+#[test]
 fn invalid_huid_argument_is_a_usage_error() {
     let tmp = scratch();
     init(tmp.path());

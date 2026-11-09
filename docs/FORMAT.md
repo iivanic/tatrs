@@ -69,8 +69,12 @@ properties or body for that file.
 - A blank line between properties also ends the block: everything after it is body.
 - Duplicate keys are allowed and the **last** value wins. `W0101` is reported; saving collapses the
   duplicates to the last value.
-- Missing `STATUS`, `PRIORITY`, and `TAGS` are materialized with `OPEN`, `999999`, and empty,
-  matching upstream's loader. `new` instead uses `100` (upstream's creation default).
+- Missing `STATUS`, `PRIORITY`, and `TAGS` are defaulted in memory (`OPEN`, `999999`, empty) but are
+  **not** inserted by parsing, so an untouched file keeps its original shape. A mutation that
+  rewrites the file materializes the keys it changes. `new` writes all three, using priority `100`
+  (upstream's creation default).
+- A rewritten file is byte-identical to the original when nothing semantic changed: all 94 tasks in
+  the upstream corpus round-trip exactly (`crates/tatrs-core/tests/corpus_roundtrip.rs`).
 
 Because keys cannot contain separators, the agent-workflow properties are single tokens:
 

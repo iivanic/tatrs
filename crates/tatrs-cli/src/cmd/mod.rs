@@ -1,10 +1,15 @@
 //! Command dispatch. Each subcommand is a thin adapter over `tatrs-core`.
 
 pub mod check;
+pub mod find;
+pub mod id;
 pub mod init;
 pub mod ls;
 pub mod new;
+pub mod refs;
 pub mod show;
+pub mod summary;
+pub mod todo;
 pub mod version;
 
 use crate::args::{Cli, Command};
@@ -35,6 +40,11 @@ pub fn dispatch(cli: Cli) -> Result<(), AppError> {
         Command::New(args) => new::run(&global, &args),
         Command::Ls(args) => ls::run(&global, &args),
         Command::Show(args) => show::run(&global, &args),
+        Command::Find(args) => find::run(&global, &args),
+        Command::Id => id::run(&global),
+        Command::Ref(args) => refs::run(&global, &args),
+        Command::Summary(args) => summary::run(&global, &args),
+        Command::Todo(args) => todo::run(&global, &args),
         Command::Check(args) => check::run(&global, &args),
         Command::Version => version::run(&global),
     }

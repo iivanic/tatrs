@@ -18,9 +18,9 @@ tasks/
 
 ## Status
 
-Working today: `init`, `new`, `ls` (TQL queries, batch updates, `--dry-run`), `show`, `check`,
-`version`. Planned: `find`, `id`, `ref`, `summary`, `todo`, claims and `ready`, and the MCP server.
-See `docs/PLAN.md` and `docs/QUERY.md`.
+Working today: `init`, `new`, `ls` (TQL queries, batch updates, `--dry-run`), `show`, `find`, `id`,
+`ref`, `summary`, `todo`, `check`, `version`. Planned: claims and `ready`, `check --fix`, and the
+MCP server. See `docs/PLAN.md` and `docs/QUERY.md`.
 
 ## Build
 
@@ -38,6 +38,20 @@ tasks/20261109-133012/TASK.md:1: OPEN [PRIORITY:  10] [bug,agent] Fix flaky pars
 
 $ tatrs ls --json
 {"schema":1,"tasks":[...]}
+
+$ tatrs find 20261109-133012
+tasks/20261109-133012/TASK.md:1: OPEN [PRIORITY:  10] [bug,agent] Fix flaky parser test
+
+$ tatrs ref 20261109-133012
+src/parser.c:88:// TASK(20261109-133012): remove the retry once the flake is fixed
+
+$ tatrs summary
+STATUS:   OPEN
+TOTAL:    3
+TAGGED:
+       agent =>   2
+
+$ tatrs todo src/parser.c -y -t cleanup
 
 $ tatrs check --strict
 ```

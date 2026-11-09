@@ -313,14 +313,18 @@ impl Repo {
     pub fn save(&self, task: &Task) -> Result<(), StoreError> {
         let dir = self.task_dir(&task.id);
         fs::create_dir_all(&dir)?;
-        let target = self.task_file(&task.id);
+        write_atomic(&self.task_file(&task.id), &task.render())
+    }
 
-        let mut tmp = tempfile::NamedTempFile::new_in(&dir)?;
-        tmp.write_all(task.render().as_bytes())?;
-        tmp.as_file().sync_all()?;
-        tmp.persist(target)
-            .map_err(|err| StoreError::Io(err.error))?;
-        Ok(())
+    /// The task whose directory contains `cwd`, if any. Only one level below
+    /// `tasks/` counts, matching upstream's `tatrs id`.
+    pub fn current_task(&self, cwd: &Path) -> Option<Huid> {
+        let cwd = fs::canonicalize(cwd).ok()?;
+        let tasks = fs::canonicalize(self.tasks_dir()).ok()?;
+        if cwd.parent()? != tasks.as_path() {
+            return None;
+        }
+        Huid::parse(cwd.file_name()?.to_string_lossy()).ok()
     }
 
     /// Acquire the exclusive batch-update lock, waiting up to `timeout`.
@@ -387,6 +391,22 @@ fn lock_is_stale(path: &Path) -> bool {
         .and_then(|modified| modified.elapsed().ok())
         .map(|age| age > LOCK_STALE_AFTER)
         .unwrap_or(false)
+}
+
+/// Write `contents` to `path` atomically: a temp file in the same directory is
+/// renamed over the target, so readers never observe a truncated file.
+pub fn write_atomic(path: &Path, contents: &str) -> Result<(), StoreError> {
+    let dir = path.parent().ok_or_else(|| {
+        StoreError::Io(std::io::Error::new(
+            ErrorKind::NotFound,
+            "path has no parent directory",
+        ))
+    })?;
+    let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
+    tmp.write_all(contents.as_bytes())?;
+    tmp.as_file().sync_all()?;
+    tmp.persist(path).map_err(|err| StoreError::Io(err.error))?;
+    Ok(())
 }
 
 /// Create `tasks/` (and a short README) if it does not exist yet.
@@ -481,6 +501,18 @@ mod tests {
         assert!(matches!(err, StoreError::Locked { .. }));
         drop(guard);
         repo.try_lock(Duration::from_millis(100)).unwrap();
+    }
+
+    #[test]
+    fn current_task_requires_exactly_one_level_below_tasks() {
+        let (_tmp, repo) = repo();
+        let id = Huid::parse("20261109-120000").unwrap();
+        let dir = repo.task_dir(&id);
+        fs::create_dir_all(dir.join("attachments")).unwrap();
+
+        assert_eq!(repo.current_task(&dir), Some(id));
+        assert_eq!(repo.current_task(&dir.join("attachments")), None);
+        assert_eq!(repo.current_task(repo.root()), None);
     }
 
     #[test]

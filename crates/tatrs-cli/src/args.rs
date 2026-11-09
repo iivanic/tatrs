@@ -60,6 +60,21 @@ pub enum Command {
     /// Show a single task, including its body
     Show(ShowArgs),
 
+    /// Locate a task, including closed ones
+    Find(FindArgs),
+
+    /// Print the HUID of the task whose directory you are in
+    Id,
+
+    /// Find references to a task id across the repository
+    Ref(RefArgs),
+
+    /// Summarize open or closed tasks by tag
+    Summary(SummaryArgs),
+
+    /// Create tasks from TODO comments and rewrite them as TASK(<id>) markers
+    Todo(TodoArgs),
+
     /// Validate the tasks/ database
     Check(CheckArgs),
 
@@ -168,6 +183,58 @@ pub struct ShowArgs {
     /// Print TASK.md exactly as stored
     #[arg(long, conflicts_with = "path_only")]
     pub raw: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct FindArgs {
+    /// Task id
+    #[arg(value_name = "HUID")]
+    pub huid: String,
+
+    /// Print only the path to TASK.md
+    #[arg(long)]
+    pub path_only: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct RefArgs {
+    /// Task id; defaults to the task whose directory you are in
+    #[arg(value_name = "HUID")]
+    pub huid: Option<String>,
+
+    /// Exit 5 when nothing refers to the task
+    #[arg(long)]
+    pub fail_if_empty: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct SummaryArgs {
+    /// Summarize closed tasks instead of open ones
+    #[arg(short = 'c', long = "closed")]
+    pub closed: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct TodoArgs {
+    /// Files to scan for `TODO:` markers
+    #[arg(value_name = "FILE", required = true, num_args = 1..)]
+    pub files: Vec<PathBuf>,
+
+    /// Tags for the created tasks
+    #[arg(short = 't', long = "tag", value_name = "TAGS")]
+    pub tags: Vec<String>,
+
+    /// Optional id suffix for the created tasks
+    #[arg(short = 's', long, value_name = "SUFFIX")]
+    pub suffix: Option<String>,
+
+    /// Actually create tasks and rewrite files
+    #[arg(short = 'y', long)]
+    pub yes: bool,
+
+    /// Only report what would be created
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, Args)]

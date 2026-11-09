@@ -80,17 +80,11 @@ impl Task {
             return task;
         }
 
-        let mut props = parser.parse_properties();
+        let props = parser.parse_properties();
         let body = parser.source[parser.pos..].to_owned();
         let mut diagnostics = parser.diagnostics;
 
-        let status = match props.get("STATUS") {
-            Some(value) => value.to_owned(),
-            None => {
-                props.put("STATUS", "OPEN");
-                "OPEN".to_owned()
-            }
-        };
+        let status = props.get("STATUS").unwrap_or("OPEN").to_owned();
 
         let priority = match props.get("PRIORITY") {
             Some(value) => match value.trim().parse::<i64>() {
@@ -105,16 +99,10 @@ impl Task {
                     0
                 }
             },
-            None => {
-                props.put("PRIORITY", UNPRIORITIZED.to_string());
-                UNPRIORITIZED
-            }
+            None => UNPRIORITIZED,
         };
 
         let tags = props.get("TAGS").map(split_tags).unwrap_or_default();
-        if !props.contains("TAGS") {
-            props.put("TAGS", "");
-        }
 
         Self {
             id,
@@ -157,6 +145,15 @@ impl Task {
 
     pub fn reopen(&mut self) {
         self.status = "OPEN".to_owned();
+    }
+
+    /// Materialize `STATUS`, `PRIORITY`, and `TAGS` for a task that is about to
+    /// be written. Extraction keeps them absent so untouched files keep their
+    /// original shape; a mutation must persist the fields it changed.
+    pub fn ensure_reserved_properties(&mut self) {
+        self.props.put("STATUS", self.status.clone());
+        self.props.put("PRIORITY", self.priority.to_string());
+        self.props.put("TAGS", self.tags.join(","));
     }
 
     /// A task can only terminate an agent loop if it states how it is verified.
@@ -223,11 +220,21 @@ impl Task {
 
     /// Canonical rendering. Body bytes are appended verbatim; only the header is
     /// normalized (LF line endings, one blank line after the title).
+    ///
+    /// Reserved properties are rewritten only if the file already declares
+    /// them, so an untouched task round-trips byte-for-byte. Mutations create
+    /// missing keys through [`Task::ensure_reserved_properties`].
     pub fn render(&self) -> String {
         let mut props = self.props.clone();
-        props.put("STATUS", self.status.clone());
-        props.put("PRIORITY", self.priority.to_string());
-        props.put("TAGS", self.tags.join(","));
+        if props.contains("STATUS") {
+            props.put("STATUS", self.status.clone());
+        }
+        if props.contains("PRIORITY") {
+            props.put("PRIORITY", self.priority.to_string());
+        }
+        if props.contains("TAGS") {
+            props.put("TAGS", self.tags.join(","));
+        }
 
         let mut out =
             String::with_capacity(self.body.len() + self.title.len() + 16 * props.len() + 16);

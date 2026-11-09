@@ -96,13 +96,13 @@ Global: `--json`, `--porcelain`, `--quiet`, `--no-color`, `--cwd <path>`, `--len
 | `show` | full task incl. body | `<HUID>`, `--json`, `--path-only` |
 | `find` | locate task regardless of status | `<HUID>`, `--path-only` |
 | `id` | current task HUID (inside a task dir) | |
-| `ref` | find references to a HUID | `<HUID>`, `--json` |
-| `summary` | counts by status/tag/priority | `--json` |
-| `check` | validate tree | `--fix`, `--strict`, `--json` |
+| `ref` | find references to a HUID | `[HUID]`, `--fail-if-empty`, `--json` |
+| `summary` | counts by status, tag, and priority | `-c/--closed`, `--json` |
+| `check` | validate tree | `--strict`, `--json` (M2: `--fix`) |
 | `ready` | runnable tasks (M2) | `--json`, `--limit`, `--explain` |
 | `claim` | lease a task, or inspect leases (M2) | `<HUID>`, `--owner`, `--ttl`, `--run`, `--refresh`, `--status`, `--task`, `--fail-if-empty`, `--json` |
 | `release` | drop a lease (M2) | `<HUID>`, `--token`, `--json` |
-| `todo` | convert `TODO:` comments (M2) | files, `-y`, `--dry-run`, `-t` |
+| `todo` | convert `TODO:` comments | `FILES...`, `-t`, `-s`, `-y`, `--dry-run`, `--json` |
 | `mcp` | stdio MCP server (M4) | `--allow-write` |
 
 Examples:
@@ -118,8 +118,8 @@ $ tatrs ready --json --limit 5
 {"schema":1,"ready":[{"id":"...","depends":["..."],"priority":10,"title":"..."}]}
 ```
 
-Implemented: `init`, `new`, `ls` (including TQL and `--update`), `show`, `check`, `version`.
-Everything else in the table is specified for M1–M4.
+Implemented: `init`, `new`, `ls` (including TQL and `--update`), `show`, `find`, `id`, `ref`,
+`summary`, `todo`, `check`, `version`. Everything else in the table is specified for M2–M4.
 
 Exit codes: `0` success, `1` runtime/IO error, `2` usage error, `3` invalid data (`check` failures,
 malformed `TASK.md`), `4` lock contention/timeout, `5` not found. `ls` with no matches exits `0`
@@ -155,10 +155,10 @@ frozen with tests for every quirk.
 **Done when:** 94/94 upstream tasks load with identical status/priority/tags/title, and rewriting
 untouched tasks is byte-identical to upstream's renderer (or the diff is documented and intentional).
 
-**Landed 2026-11-09:** TQL and the update language with compile-time type checking
-(`docs/QUERY.md`), batch lock, dry-run, and corpus query baselines
-(`tests/fixtures/corpus-queries.json`). Remaining: `find`, `id`, `ref`, `summary`, `todo`, and a
-byte-identical render comparison against upstream.
+**Done 2026-11-09.** TQL and the update language with compile-time type checking (`docs/QUERY.md`),
+batch lock, dry-run, corpus query baselines (`tests/fixtures/corpus-queries.json`), the remaining
+read commands (`find`, `id`, `ref`, `summary`, `todo`), and a corpus round-trip test proving that
+all 94 upstream tasks parse and render back byte-identically (LF-normalized).
 
 ### M2 — agent surface
 `check --fix`, `ready`, `claim`/`release`, `--read-only`, non-TTY safety, structured diagnostics,
