@@ -42,11 +42,10 @@ tatrs man > tatrs.1
 
 Prebuilt binaries are published with each `v*` tag as
 `tatrs-<version>-<target>.zip` plus a matching `.sha256`
-(`x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`).
-Replace `OWNER` with the repository owner:
+(`x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`):
 
 ```console
-curl -LO https://github.com/OWNER/tatrs/releases/download/v0.1.0/tatrs-0.1.0-x86_64-unknown-linux-musl.zip
+curl -LO https://github.com/iivanic/tatrs/releases/download/v0.1.0/tatrs-0.1.0-x86_64-unknown-linux-musl.zip
 sha256sum -c tatrs-0.1.0-x86_64-unknown-linux-musl.zip.sha256
 unzip tatrs-0.1.0-x86_64-unknown-linux-musl.zip -d ~/.local/bin
 ```
