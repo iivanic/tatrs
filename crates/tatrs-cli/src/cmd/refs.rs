@@ -1,4 +1,4 @@
-use tatrs_core::refs::find_references;
+use tatrs_core::refs::find_references_with;
 use tatrs_core::{Huid, Repo};
 
 use crate::args::{Global, RefArgs};
@@ -17,7 +17,7 @@ pub fn run(global: &Global, args: &RefArgs) -> Result<(), AppError> {
         })?,
     };
 
-    let references = find_references(&repo, &id);
+    let references = find_references_with(&repo, &id, !args.no_ignore);
 
     if references.is_empty() && args.fail_if_empty {
         return Err(AppError::NotFound(format!("no references to {id}")));

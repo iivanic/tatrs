@@ -205,6 +205,10 @@ pub struct RefArgs {
     /// Exit 5 when nothing refers to the task
     #[arg(long)]
     pub fail_if_empty: bool,
+
+    /// Scan ignored files too (do not honour .gitignore)
+    #[arg(long)]
+    pub no_ignore: bool,
 }
 
 #[derive(Debug, Clone, Args)]

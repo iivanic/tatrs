@@ -163,6 +163,8 @@ all 94 upstream tasks parse and render back byte-identically (LF-normalized).
 ### M2 — agent surface
 `check --fix`, `ready`, `claim`/`release`, `--read-only`, non-TTY safety, structured diagnostics,
 shell completions, man page, `tatrs-mcp` read-only tools.
+**Ahead of the rest (done 2026-11-09):** `ref` honours `.gitignore` and `.git/info/exclude` via the
+`ignore` crate, with `--no-ignore` as an escape hatch.
 **Done when:** an end-to-end script lists ready work, claims, edits, closes, and unclaims using only
 JSON, with no prompts.
 

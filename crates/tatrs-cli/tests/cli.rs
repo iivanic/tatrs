@@ -525,6 +525,30 @@ fn ref_finds_references_and_can_fail_when_empty() {
 }
 
 #[test]
+fn ref_respects_gitignore_and_no_ignore_scans_everything() {
+    let tmp = scratch();
+    init(tmp.path());
+    let created = create(tmp.path(), "Ignored reference", &["bug"], 10);
+    let id = created["id"].as_str().unwrap().to_owned();
+
+    std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+    std::fs::write(
+        tmp.path().join("src/generated.c"),
+        format!("// TASK({id})\n"),
+    )
+    .unwrap();
+    std::fs::write(tmp.path().join(".gitignore"), "src/\n").unwrap();
+
+    let ignored = json(&run_in(tmp.path(), &["ref", &id, "--json"]));
+    assert_eq!(ignored["references"].as_array().unwrap().len(), 0);
+
+    let all = json(&run_in(tmp.path(), &["ref", &id, "--json", "--no-ignore"]));
+    let references = all["references"].as_array().unwrap();
+    assert_eq!(references.len(), 1);
+    assert_eq!(references[0]["path"], "src/generated.c");
+}
+
+#[test]
 fn summary_reports_open_then_closed() {
     let tmp = scratch();
     init(tmp.path());

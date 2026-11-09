@@ -102,6 +102,10 @@ A single task object, like `show`. `--path-only` prints the relative path as pla
 References are repository-relative, forward-slash separated, and sorted by path then line. `.git`
 and binary files are skipped. An empty array is a success; `--fail-if-empty` makes it exit `5`.
 
+Scanning honours the repository's `.gitignore` files (nested, with negation and `**`) and
+`.git/info/exclude`; a user's global git excludes are **not** applied, so results are reproducible
+across machines. `--no-ignore` scans ignored files too.
+
 ## `tatrs summary --json`
 
 ```json

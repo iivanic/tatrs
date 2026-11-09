@@ -1,10 +1,16 @@
 //! In-process reference search. Replaces upstream's `grep` shell-out so the
-//! command behaves identically on Windows and cannot be influenced by the
-//! user's grep configuration.
+//! command behaves identically on Windows, cannot be influenced by the user's
+//! grep configuration, and honours git's ignore rules.
+//!
+//! Ignore handling is delegated to the `ignore` crate: gitignore semantics
+//! (nested files, negation, `**`, directory-only patterns) are subtle enough
+//! that a hand-rolled matcher would be a liability. Global user excludes are
+//! **not** applied — only the repository's own `.gitignore` files and
+//! `.git/info/exclude` — so results are reproducible across machines.
 
 use std::fs;
-use std::path::Path;
 
+use ignore::WalkBuilder;
 use serde::Serialize;
 
 use crate::huid::Huid;
@@ -18,40 +24,44 @@ pub struct Reference {
     pub text: String,
 }
 
-/// Find every line mentioning `id`, skipping `.git` and binary files.
-/// Best-effort: unreadable files and directories are ignored.
+/// Find references, respecting the repository's ignore files.
 pub fn find_references(repo: &Repo, id: &Huid) -> Vec<Reference> {
-    let mut references = Vec::new();
-    walk(repo, repo.root(), id, &mut references);
-    references
+    find_references_with(repo, id, true)
 }
 
-fn walk(repo: &Repo, dir: &Path, id: &Huid, out: &mut Vec<Reference>) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    let mut entries: Vec<_> = entries.filter_map(Result::ok).collect();
-    entries.sort_by_key(|entry| entry.file_name());
+/// `respect_ignore = false` scans ignored files too (`--no-ignore`).
+pub fn find_references_with(repo: &Repo, id: &Huid, respect_ignore: bool) -> Vec<Reference> {
+    let mut references = Vec::new();
 
-    for entry in entries {
-        let name = entry.file_name();
-        if name == ".git" {
+    let mut builder = WalkBuilder::new(repo.root());
+    builder
+        .hidden(false)
+        .parents(true)
+        .ignore(false)
+        .git_global(false)
+        .git_ignore(respect_ignore)
+        .git_exclude(respect_ignore)
+        .require_git(false)
+        .follow_links(false)
+        .same_file_system(false);
+
+    builder.filter_entry(|entry| {
+        !matches!(
+            entry.file_name().to_string_lossy().as_ref(),
+            ".git" | ".hg" | ".svn"
+        )
+    });
+
+    for entry in builder.build().flatten() {
+        if !entry
+            .file_type()
+            .is_some_and(|file_type| file_type.is_file())
+        {
             continue;
         }
         let path = entry.path();
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
 
-        if file_type.is_dir() {
-            walk(repo, &path, id, out);
-            continue;
-        }
-        if !file_type.is_file() {
-            continue;
-        }
-
-        let Ok(bytes) = fs::read(&path) else {
+        let Ok(bytes) = fs::read(path) else {
             continue;
         };
         if bytes.contains(&0) {
@@ -66,18 +76,27 @@ fn walk(repo: &Repo, dir: &Path, id: &Huid, out: &mut Vec<Reference>) {
 
         for (index, line) in text.lines().enumerate() {
             if line.contains(id.as_str()) {
-                out.push(Reference {
-                    path: repo.rel_path(&path),
+                references.push(Reference {
+                    path: repo.rel_path(path),
                     line: index + 1,
                     text: line.to_owned(),
                 });
             }
         }
     }
+
+    references.sort_by(|left, right| {
+        left.path
+            .cmp(&right.path)
+            .then_with(|| left.line.cmp(&right.line))
+    });
+    references
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     fn scratch() -> tempfile::TempDir {
@@ -89,12 +108,21 @@ mod tests {
             .unwrap()
     }
 
-    #[test]
-    fn finds_source_and_task_references_but_skips_git_and_binaries() {
+    fn setup() -> (tempfile::TempDir, Repo, Huid) {
         let tmp = scratch();
         crate::store::init(tmp.path()).unwrap();
         let repo = Repo::open(tmp.path()).unwrap();
         let id = Huid::parse("20261109-120000").unwrap();
+        (tmp, repo, id)
+    }
+
+    fn paths(references: &[Reference]) -> Vec<&str> {
+        references.iter().map(|r| r.path.as_str()).collect()
+    }
+
+    #[test]
+    fn finds_source_and_task_references_but_skips_git_and_binaries() {
+        let (tmp, repo, id) = setup();
 
         fs::create_dir_all(tmp.path().join("src")).unwrap();
         fs::write(
@@ -105,10 +133,49 @@ mod tests {
         fs::create_dir_all(tmp.path().join(".git")).unwrap();
         fs::write(tmp.path().join(".git/HEAD"), format!("{id}\n")).unwrap();
         fs::write(tmp.path().join("blob.bin"), b"\0\0").unwrap();
+        fs::write(tmp.path().join(".hidden.c"), format!("{id}\n")).unwrap();
 
         let references = find_references(&repo, &id);
-        assert_eq!(references.len(), 1);
-        assert_eq!(references[0].path, "src/main.c");
-        assert_eq!(references[0].line, 2);
+        assert_eq!(paths(&references), vec![".hidden.c", "src/main.c"]);
+        assert_eq!(references[1].line, 2);
+    }
+
+    #[test]
+    fn respects_gitignore_and_negation() {
+        let (tmp, repo, id) = setup();
+
+        fs::write(tmp.path().join(".gitignore"), "build/\n*.log\n!keep.log\n").unwrap();
+        fs::create_dir_all(tmp.path().join("build")).unwrap();
+        fs::write(tmp.path().join("build/gen.c"), format!("{id}\n")).unwrap();
+        fs::write(tmp.path().join("debug.log"), format!("{id}\n")).unwrap();
+        fs::write(tmp.path().join("keep.log"), format!("{id}\n")).unwrap();
+        fs::write(tmp.path().join("src.c"), format!("{id}\n")).unwrap();
+
+        assert_eq!(
+            paths(&find_references(&repo, &id)),
+            vec!["keep.log", "src.c"]
+        );
+        assert_eq!(
+            paths(&find_references_with(&repo, &id, false)),
+            vec!["build/gen.c", "debug.log", "keep.log", "src.c"]
+        );
+    }
+
+    #[test]
+    fn nested_gitignore_applies_to_its_subtree_only() {
+        let (tmp, repo, id) = setup();
+
+        fs::create_dir_all(tmp.path().join("src/generated")).unwrap();
+        fs::create_dir_all(tmp.path().join("other/generated")).unwrap();
+        fs::create_dir_all(tmp.path().join("src/nested")).unwrap();
+        fs::write(tmp.path().join("src/.gitignore"), "generated/\n").unwrap();
+        fs::write(tmp.path().join("src/generated/a.c"), format!("{id}\n")).unwrap();
+        fs::write(tmp.path().join("other/generated/b.c"), format!("{id}\n")).unwrap();
+        fs::write(tmp.path().join("src/nested/c.c"), format!("{id}\n")).unwrap();
+
+        assert_eq!(
+            paths(&find_references(&repo, &id)),
+            vec!["other/generated/b.c", "src/nested/c.c"]
+        );
     }
 }
