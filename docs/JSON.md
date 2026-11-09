@@ -53,6 +53,12 @@
 Filters and sorting are applied server-side. `[]` is a successful empty result; `--fail-if-empty`
 turns it into exit code 5 with no JSON on stdout.
 
+With `--update`, the payload gains three fields; `tasks` reflects the post-update state:
+
+```json
+{"schema": 1, "updated": 2, "dry_run": false, "update": "close,-wip", "tasks": [...]}
+```
+
 ## `tatrs new --json`
 
 A single task object. When `--id` refers to an existing task, the command prints that task and exits

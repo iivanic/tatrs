@@ -28,7 +28,15 @@ try {
         throw "upstream corpus produced $($check.errors) error(s): $($codes -join ', ')"
     }
 
-    Write-Host "compat OK: $($listed.tasks.Count) tasks, $($check.warnings) warning(s)"
+    $baseline = Get-Content (Join-Path $root 'tests\fixtures\corpus-queries.json') -Raw | ConvertFrom-Json
+    foreach ($case in $baseline.queries) {
+        $result = & $bin ls $case.query --all --json --cwd $reference | ConvertFrom-Json
+        if ($result.tasks.Count -ne $case.count) {
+            throw "query '$($case.query)' returned $($result.tasks.Count) tasks, expected $($case.count)"
+        }
+    }
+
+    Write-Host "compat OK: $($listed.tasks.Count) tasks, $($check.warnings) warning(s), $($baseline.queries.Count) query baseline(s)"
 }
 finally {
     Pop-Location

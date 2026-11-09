@@ -118,8 +118,8 @@ $ tatrs ready --json --limit 5
 {"schema":1,"ready":[{"id":"...","depends":["..."],"priority":10,"title":"..."}]}
 ```
 
-Implemented in M0: `init`, `new`, `ls`, `show`, `check`, `version`. Everything else in the table is
-specified for M1–M4; `ls` query arguments and `-u/--update` are M1.
+Implemented: `init`, `new`, `ls` (including TQL and `--update`), `show`, `check`, `version`.
+Everything else in the table is specified for M1–M4.
 
 Exit codes: `0` success, `1` runtime/IO error, `2` usage error, `3` invalid data (`check` failures,
 malformed `TASK.md`), `4` lock contention/timeout, `5` not found. `ls` with no matches exits `0`
@@ -154,6 +154,11 @@ compat corpus test against `reference/tatr/tasks` (read-only, `.git` excluded), 
 frozen with tests for every quirk.
 **Done when:** 94/94 upstream tasks load with identical status/priority/tags/title, and rewriting
 untouched tasks is byte-identical to upstream's renderer (or the diff is documented and intentional).
+
+**Landed 2026-11-09:** TQL and the update language with compile-time type checking
+(`docs/QUERY.md`), batch lock, dry-run, and corpus query baselines
+(`tests/fixtures/corpus-queries.json`). Remaining: `find`, `id`, `ref`, `summary`, `todo`, and a
+byte-identical render comparison against upstream.
 
 ### M2 — agent surface
 `check --fix`, `ready`, `claim`/`release`, `--read-only`, non-TTY safety, structured diagnostics,

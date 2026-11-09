@@ -1,0 +1,11 @@
+{
+  "note": "Baseline recorded 2026-11-09 against reference/tatr @ bd29290 (94 tasks). Counts were cross-checked by parsing TASK.md independently (grep/split on the TAGS line). scripts/compat.ps1 compares TQL results against these numbers to catch semantic regressions.",
+  "queries": [
+    { "query": ":bug", "count": 15 },
+    { "query": ":scope", "count": 5 },
+    { "query": ":release", "count": 21 },
+    { "query": "tagged", "count": 53 },
+    { "query": "not tagged", "count": 41 },
+    { "query": "priority lt 100", "count": 25 }
+  ]
+}

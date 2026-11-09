@@ -268,6 +268,213 @@ fn body_line_endings_are_normalized() {
     assert!(raw.ends_with("line one\nline two\n"));
 }
 
+fn create(dir: &Path, title: &str, tags: &[&str], priority: i64) -> Value {
+    let mut args: Vec<String> = vec!["new".into(), title.into(), "--json".into()];
+    for tag in tags {
+        args.push("-t".into());
+        args.push((*tag).to_owned());
+    }
+    args.push("-p".into());
+    args.push(priority.to_string());
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = run_in(dir, &refs);
+    assert!(output.status.success(), "{}", stderr(&output));
+    json(&output)
+}
+
+#[test]
+fn tql_filters_and_precedence() {
+    let tmp = scratch();
+    init(tmp.path());
+    create(tmp.path(), "A", &["bug"], 10);
+    create(tmp.path(), "B", &["bug"], 100);
+    create(tmp.path(), "C", &["ui"], 5);
+
+    let bugs = json(&run_in(tmp.path(), &["ls", ":bug", "--json"]));
+    assert_eq!(bugs["tasks"].as_array().unwrap().len(), 2);
+
+    let urgent = json(&run_in(
+        tmp.path(),
+        &["ls", ":bug and priority lt 50", "--json"],
+    ));
+    let titles: Vec<_> = urgent["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|task| task["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(titles, vec!["A"]);
+
+    let grouped = json(&run_in(
+        tmp.path(),
+        &["ls", "[:bug or :ui] and priority lt 50", "--json"],
+    ));
+    let grouped_titles: Vec<_> = grouped["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|task| task["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(grouped_titles, vec!["A", "C"]);
+
+    let not_bug = json(&run_in(tmp.path(), &["ls", ":ui and not :bug", "--json"]));
+    assert_eq!(not_bug["tasks"].as_array().unwrap().len(), 1);
+
+    let range = json(&run_in(
+        tmp.path(),
+        &["ls", "priority ge 10 and priority le 100", "--json"],
+    ));
+    assert_eq!(range["tasks"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn update_rewrites_only_matches_and_preserves_unknown_properties() {
+    let tmp = scratch();
+    init(tmp.path());
+    let created = create(tmp.path(), "A", &["bug"], 10);
+    create(tmp.path(), "B", &["ui"], 100);
+
+    let rel = created["path"].as_str().unwrap();
+    let path = tmp.path().join(rel);
+    let content = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, format!("{content}- CUSTOM: keep\n")).unwrap();
+
+    let output = run_in(
+        tmp.path(),
+        &["ls", "-u", "close,-bug,+agent", ":bug", "--json"],
+    );
+    assert!(output.status.success(), "{}", stderr(&output));
+    let payload = json(&output);
+    assert_eq!(payload["updated"], 1);
+    assert_eq!(payload["dry_run"], false);
+    let task = &payload["tasks"][0];
+    assert_eq!(task["status"], "CLOSED");
+    assert_eq!(task["tags"], serde_json::json!(["agent"]));
+
+    let rewritten = std::fs::read_to_string(&path).unwrap();
+    assert!(rewritten.contains("- CUSTOM: keep"), "{rewritten}");
+    assert!(rewritten.contains("- STATUS: CLOSED"), "{rewritten}");
+    assert!(rewritten.contains("- TAGS: agent"), "{rewritten}");
+
+    let untouched = json(&run_in(tmp.path(), &["ls", "--all", "--json"]));
+    let ui = untouched["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|task| task["title"] == "B")
+        .unwrap();
+    assert_eq!(ui["status"], "OPEN");
+}
+
+#[test]
+fn update_dry_run_writes_nothing() {
+    let tmp = scratch();
+    init(tmp.path());
+    create(tmp.path(), "A", &["bug"], 10);
+
+    let preview = json(&run_in(
+        tmp.path(),
+        &["ls", "-u", "close", ":bug", "--dry-run", "--json"],
+    ));
+    assert_eq!(preview["updated"], 1);
+    assert_eq!(preview["dry_run"], true);
+    assert_eq!(preview["tasks"][0]["status"], "CLOSED");
+
+    let after = json(&run_in(tmp.path(), &["ls", ":bug", "--json"]));
+    assert_eq!(after["tasks"][0]["status"], "OPEN");
+}
+
+#[test]
+fn reopening_needs_the_all_flag() {
+    let tmp = scratch();
+    init(tmp.path());
+    create(tmp.path(), "A", &["bug"], 10);
+
+    run_in(tmp.path(), &["ls", "-u", "close", ":bug"]);
+
+    let skipped = json(&run_in(tmp.path(), &["ls", "-u", "open", ":bug", "--json"]));
+    assert_eq!(skipped["tasks"].as_array().unwrap().len(), 0);
+
+    let reopened = json(&run_in(
+        tmp.path(),
+        &["ls", "-a", "-u", "open", ":bug", "--json"],
+    ));
+    assert_eq!(reopened["updated"], 1);
+    assert_eq!(reopened["tasks"][0]["status"], "OPEN");
+}
+
+#[test]
+fn query_and_update_errors_exit_2_with_a_caret() {
+    let tmp = scratch();
+    init(tmp.path());
+    create(tmp.path(), "A", &["bug"], 10);
+
+    let bad_query = run_in(tmp.path(), &["ls", ":bug and"]);
+    assert_eq!(bad_query.status.code(), Some(2));
+    assert!(stderr(&bad_query).contains('^'), "{}", stderr(&bad_query));
+
+    let bad_update = run_in(tmp.path(), &["ls", "-u", "nope", ":bug"]);
+    assert_eq!(bad_update.status.code(), Some(2));
+    assert!(stderr(&bad_update).contains("unknown action"));
+
+    let missing_query = run_in(tmp.path(), &["ls", "-u", "close"]);
+    assert_eq!(missing_query.status.code(), Some(2));
+    assert!(stderr(&missing_query).contains("requires a query"));
+}
+
+#[test]
+fn read_only_blocks_update_but_allows_dry_run() {
+    let tmp = scratch();
+    init(tmp.path());
+    create(tmp.path(), "A", &["bug"], 10);
+
+    let blocked = run_in(tmp.path(), &["ls", "-u", "close", ":bug", "--read-only"]);
+    assert_eq!(blocked.status.code(), Some(2));
+
+    let preview = run_in(
+        tmp.path(),
+        &["ls", "-u", "close", ":bug", "--dry-run", "--read-only"],
+    );
+    assert!(preview.status.success(), "{}", stderr(&preview));
+}
+
+#[test]
+fn huid_and_negative_priority_queries() {
+    let tmp = scratch();
+    init(tmp.path());
+    let created = create(tmp.path(), "A", &["bug"], -5);
+    let id = created["id"].as_str().unwrap().to_owned();
+
+    let by_id = json(&run_in(tmp.path(), &["ls", &id, "--json"]));
+    assert_eq!(by_id["tasks"].as_array().unwrap().len(), 1);
+
+    let negative = json(&run_in(tmp.path(), &["ls", "priority lt -1", "--json"]));
+    assert_eq!(negative["tasks"].as_array().unwrap().len(), 1);
+
+    let miss = json(&run_in(tmp.path(), &["ls", "20260101-000000", "--json"]));
+    assert!(miss["tasks"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn update_refuses_to_rewrite_a_malformed_task() {
+    let tmp = scratch();
+    init(tmp.path());
+
+    let task_dir = tmp.path().join("tasks/20260101-000000");
+    std::fs::create_dir(&task_dir).unwrap();
+    let path = task_dir.join("TASK.md");
+    std::fs::write(&path, "not a heading\n\nprecious body\n").unwrap();
+
+    let output = run_in(tmp.path(), &["ls", "-u", "close", "any"]);
+    assert_eq!(output.status.code(), Some(3), "{}", stderr(&output));
+
+    let after = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        after.contains("precious body"),
+        "body was damaged: {after:?}"
+    );
+}
+
 #[test]
 fn invalid_huid_argument_is_a_usage_error() {
     let tmp = scratch();

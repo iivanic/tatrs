@@ -78,7 +78,7 @@ pub struct NewArgs {
     pub tags: Vec<String>,
 
     /// Sort priority; higher values sort first
-    #[arg(short = 'p', long, default_value_t = tatrs_core::task::DEFAULT_PRIORITY)]
+    #[arg(short = 'p', long, default_value_t = tatrs_core::task::DEFAULT_PRIORITY, allow_negative_numbers = true)]
     pub priority: i64,
 
     /// Deterministic task id; if it already exists this is a no-op (exit 0)
@@ -122,6 +122,10 @@ pub enum Sort {
 
 #[derive(Debug, Clone, Args)]
 pub struct LsArgs {
+    /// TQL query; see docs/QUERY.md (for example `:bug and priority lt 50`)
+    #[arg(value_name = "QUERY", allow_negative_numbers = true)]
+    pub query: Vec<String>,
+
     /// Include both open and closed tasks
     #[arg(short = 'a', long)]
     pub all: bool,
@@ -137,6 +141,14 @@ pub struct LsArgs {
     /// Sort order
     #[arg(long, value_enum, value_name = "KEY")]
     pub sort: Option<Sort>,
+
+    /// Apply update actions to matched tasks: close, open, +tag, -tag
+    #[arg(short = 'u', long = "update", value_name = "OPS")]
+    pub update: Option<String>,
+
+    /// With --update: report what would change without writing anything
+    #[arg(long)]
+    pub dry_run: bool,
 
     /// Exit 5 when nothing matches instead of printing an empty list
     #[arg(long)]

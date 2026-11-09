@@ -8,10 +8,21 @@ use tatrs_core::{Diagnostic, Repo, Task};
 /// integrations keep working:
 /// `tasks/<id>/TASK.md:1: OPEN [PRIORITY:  10] [bug,agent] Title`
 pub fn task_report(task: &Task, rel_path: &str) -> String {
-    let mut out = format!(
-        "{}:1: {} [PRIORITY: {:>3}]",
-        rel_path, task.status, task.priority
-    );
+    task_report_with(task, rel_path, None)
+}
+
+/// Same report, optionally annotated with the update that was applied.
+pub fn task_report_with(task: &Task, rel_path: &str, marker: Option<&str>) -> String {
+    let mut out = format!("{}:1:", rel_path);
+    if let Some(marker) = marker {
+        out.push_str(" <");
+        out.push_str(marker);
+        out.push('>');
+    }
+    out.push_str(&format!(
+        " {} [PRIORITY: {:>3}]",
+        task.status, task.priority
+    ));
     if !task.tags.is_empty() {
         out.push_str(" [");
         out.push_str(&task.tags.join(","));

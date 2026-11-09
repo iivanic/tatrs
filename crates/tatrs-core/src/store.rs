@@ -3,6 +3,7 @@
 use std::fs;
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::diagnostics::{Diagnostic, codes};
 use crate::huid::{Huid, HuidError};
@@ -61,6 +62,10 @@ pub enum StoreError {
     NotFound(String),
     #[error("could not allocate a task id after 100 attempts; check the system clock")]
     IdExhausted,
+    #[error(
+        "timed out after {timeout_ms} ms waiting for the task lock ({path} is held by another process)"
+    )]
+    Locked { path: PathBuf, timeout_ms: u64 },
     #[error(transparent)]
     Huid(#[from] HuidError),
     #[error(transparent)]
@@ -317,6 +322,71 @@ impl Repo {
             .map_err(|err| StoreError::Io(err.error))?;
         Ok(())
     }
+
+    /// Acquire the exclusive batch-update lock, waiting up to `timeout`.
+    ///
+    /// The lock is an atomically created file; a lock older than
+    /// [`LOCK_STALE_AFTER`] is considered abandoned and is reclaimed, so a
+    /// crashed process cannot wedge the repository forever.
+    pub fn try_lock(&self, timeout: Duration) -> Result<LockGuard, StoreError> {
+        let path = self.tasks_dir().join(".tatrs.lock");
+        let started = Instant::now();
+
+        loop {
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(mut file) => {
+                    let stamp = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|duration| duration.as_secs())
+                        .unwrap_or(0);
+                    let _ = writeln!(file, "pid={} at={stamp}", std::process::id());
+                    return Ok(LockGuard { path });
+                }
+                Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+                    if lock_is_stale(&path) {
+                        let _ = fs::remove_file(&path);
+                        continue;
+                    }
+                    if started.elapsed() >= timeout {
+                        return Err(StoreError::Locked {
+                            path,
+                            timeout_ms: timeout.as_millis() as u64,
+                        });
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(err) => return Err(StoreError::Io(err)),
+            }
+        }
+    }
+}
+
+/// How long a lock file may sit before another process may reclaim it.
+pub const LOCK_STALE_AFTER: Duration = Duration::from_secs(30);
+
+/// Held while a batch mutation runs; removes the lock file on drop.
+#[derive(Debug)]
+pub struct LockGuard {
+    path: PathBuf,
+}
+
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+fn lock_is_stale(path: &Path) -> bool {
+    fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+        .map(|age| age > LOCK_STALE_AFTER)
+        .unwrap_or(false)
 }
 
 /// Create `tasks/` (and a short README) if it does not exist yet.
@@ -401,6 +471,16 @@ mod tests {
         }
         let repo = Repo::open(tmp.path()).unwrap();
         assert_eq!(repo.load().tasks.len(), 8);
+    }
+
+    #[test]
+    fn lock_is_exclusive_and_released() {
+        let (_tmp, repo) = repo();
+        let guard = repo.try_lock(Duration::from_millis(100)).unwrap();
+        let err = repo.try_lock(Duration::from_millis(100)).unwrap_err();
+        assert!(matches!(err, StoreError::Locked { .. }));
+        drop(guard);
+        repo.try_lock(Duration::from_millis(100)).unwrap();
     }
 
     #[test]

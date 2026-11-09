@@ -1,4 +1,4 @@
-//! Exit-code contract (documented in `docs/PLAN.md` §4).
+//! Exit-code contract (documented in `docs/JSON.md`).
 
 use std::fmt;
 
@@ -14,6 +14,10 @@ pub enum AppError {
     Invalid,
     /// A task (or match set) was not found.
     NotFound(String),
+    /// Another process holds the repository lock.
+    Locked(String),
+    /// A report was already printed to stderr; exit with this code silently.
+    Reported(u8),
 }
 
 impl AppError {
@@ -22,7 +26,9 @@ impl AppError {
             AppError::Runtime(_) => 1,
             AppError::Usage(_) => 2,
             AppError::Invalid => 3,
+            AppError::Locked(_) => 4,
             AppError::NotFound(_) => 5,
+            AppError::Reported(code) => *code,
         }
     }
 
@@ -31,7 +37,8 @@ impl AppError {
             AppError::Usage(message) | AppError::Runtime(message) | AppError::NotFound(message) => {
                 Some(message)
             }
-            AppError::Invalid => None,
+            AppError::Locked(message) => Some(message),
+            AppError::Invalid | AppError::Reported(_) => None,
         }
     }
 }
@@ -49,6 +56,7 @@ impl From<StoreError> for AppError {
         match &err {
             StoreError::NoRepo { .. } => AppError::Runtime(err.to_string()),
             StoreError::NotFound(_) => AppError::NotFound(err.to_string()),
+            StoreError::Locked { .. } => AppError::Locked(err.to_string()),
             _ => AppError::Runtime(err.to_string()),
         }
     }
