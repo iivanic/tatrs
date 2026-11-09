@@ -1,0 +1,6 @@
+# The task format is LF on disk; keep checkouts identical on every platform.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
