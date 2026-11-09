@@ -19,15 +19,25 @@ tasks/
 ## Status
 
 Working today: `init`, `new`, `ls` (TQL queries, batch updates, `--dry-run`), `show`, `find`, `id`,
-`ref`, `summary`, `todo`, `ready`, `claim`/`release`, `check`, `mcp`, `version`. Planned: shell
-completions and a man page. See `docs/PLAN.md`, `docs/QUERY.md`, `docs/CLAIMS.md`, and
-`docs/MCP.md`.
+`ref`, `summary`, `todo`, `ready`, `claim`/`release`, `check`, `mcp`, `completions`, `man`,
+`version`. Next: release binaries and CI (M3). See `docs/PLAN.md`, `docs/QUERY.md`,
+`docs/CLAIMS.md`, and `docs/MCP.md`.
 
 ## Build
 
 ```console
 cargo build --release
 ./target/release/tatrs --help
+```
+
+## Install
+
+```console
+cargo install --path crates/tatrs-cli
+
+# optional: shell completion and man page
+tatrs completions bash > ~/.local/share/bash-completion/completions/tatrs
+tatrs man > tatrs.1
 ```
 
 ## Use

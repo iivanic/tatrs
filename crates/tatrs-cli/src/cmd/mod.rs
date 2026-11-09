@@ -2,10 +2,12 @@
 
 pub mod check;
 pub mod claim;
+pub mod completions;
 pub mod find;
 pub mod id;
 pub mod init;
 pub mod ls;
+pub mod man;
 pub mod mcp;
 pub mod new;
 pub mod ready;
@@ -54,6 +56,8 @@ pub fn dispatch(cli: Cli) -> Result<(), AppError> {
         Command::Release(args) => release::run(&global, &args),
         Command::Mcp(args) => mcp::run(&global, &args),
         Command::Check(args) => check::run(&global, &args),
+        Command::Completions(args) => completions::run(&global, &args),
+        Command::Man => man::run(&global),
         Command::Version => version::run(&global),
     }
 }

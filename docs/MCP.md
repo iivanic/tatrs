@@ -32,6 +32,7 @@ server, even if `--allow-write` is present.
 | `create_task` | write | `title`, `tags`, `priority`, `body`, `suffix`, `id` |
 | `claim_task` | write | `id`, `owner`, `ttl`, `run` |
 | `release_task` | write | `id`, `token` |
+| `update_task` | write | `id`, `ops` (`close`, `open`, `+tag`, `-tag`) |
 
 Tool results are MCP `content` blocks whose text is the same schema-1 JSON the CLI prints
 (`docs/JSON.md`). Failures are returned as `isError: true` with a human-readable message, so the
@@ -68,5 +69,4 @@ non-agent tasks, missing acceptance criteria, open dependencies, and live leases
 
 - Leases are local to the clone (`docs/DECISIONS.md` D-002); `claim_task` on another machine will
   happily hand out the same task.
-- The server does not expose task updates or closing yet; use the CLI (`tatrs ls -u close <HUID>`)
-  or extend the tool set.
+- Bulk operations (`ls -u`) and `todo` remain CLI-only; the server exposes single-task updates.

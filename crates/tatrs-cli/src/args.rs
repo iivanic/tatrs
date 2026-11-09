@@ -93,8 +93,21 @@ pub enum Command {
     /// Validate the tasks/ database
     Check(CheckArgs),
 
+    /// Print a shell completion script
+    Completions(CompletionsArgs),
+
+    /// Print the man page (roff) to stdout
+    Man,
+
     /// Print version information
     Version,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct CompletionsArgs {
+    /// Shell to generate a completion script for
+    #[arg(value_name = "SHELL")]
+    pub shell: clap_complete::Shell,
 }
 
 #[derive(Debug, Clone, Args)]

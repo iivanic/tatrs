@@ -12,12 +12,12 @@ use tatrs_core::claims::ClaimStore;
 use tatrs_core::json as core_json;
 use tatrs_core::ready::evaluate;
 use tatrs_core::task::{DEFAULT_PRIORITY, normalize_body};
-use tatrs_core::{Huid, NewTask, Query, Repo, StoreError, Task, time};
+use tatrs_core::{Huid, NewTask, Query, Repo, StoreError, Task, Update, time};
 
 /// Protocol revision advertised when the client does not ask for one.
 const PROTOCOL_VERSION: &str = "2025-06-18";
 
-const WRITE_TOOLS: [&str; 3] = ["create_task", "claim_task", "release_task"];
+const WRITE_TOOLS: [&str; 4] = ["create_task", "claim_task", "release_task", "update_task"];
 
 pub struct Server {
     repo: Repo,
@@ -124,6 +124,7 @@ impl Server {
             "create_task" => self.create_task(args),
             "claim_task" => self.claim_task(args),
             "release_task" => self.release_task(args),
+            "update_task" => self.update_task(args),
             _ => Err(format!("unknown tool `{name}`")),
         }
     }
@@ -293,6 +294,28 @@ impl Server {
         }))
     }
 
+    /// Apply update-language actions to one task, e.g. `close,-wip`.
+    fn update_task(&self, args: &Value) -> Result<Value, String> {
+        let id = required_huid(args, "id")?;
+        let ops = required_str(args, "ops")?;
+        let update = Update::compile(ops).map_err(|err| err.message)?;
+        if update.is_empty() {
+            return Err("`ops` must contain at least one action".to_owned());
+        }
+
+        let mut task = self.repo.load_task(&id).map_err(|err| err.to_string())?;
+        let changed = update.apply(&mut task);
+        if changed {
+            let _lock = self
+                .repo
+                .try_lock(Duration::from_secs(5))
+                .map_err(|err| err.to_string())?;
+            self.repo.save(&task).map_err(|err| err.to_string())?;
+        }
+
+        Ok(core_json::task_json(&task, &self.repo.rel_task_file(&id)))
+    }
+
     fn tool_definitions(&self) -> Vec<Value> {
         let mut tools = vec![
             json!({
@@ -364,6 +387,19 @@ impl Server {
                         "token": {"type": "string"}
                     },
                     "required": ["id", "token"],
+                    "additionalProperties": false
+                }
+            }));
+            tools.push(json!({
+                "name": "update_task",
+                "description": "Apply update-language actions to a task: `close`, `open`, `+tag`, `-tag`, comma-separated. Returns the updated task.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "ops": {"type": "string", "description": "e.g. `close,-wip` or `+agent`"}
+                    },
+                    "required": ["id", "ops"],
                     "additionalProperties": false
                 }
             }));
@@ -571,6 +607,31 @@ mod tests {
             json!({"id": id.as_str(), "token": token}),
         ));
         assert_eq!(released["released"], true);
+    }
+
+    #[test]
+    fn update_task_closes_and_tags() {
+        let (_tmp, repo) = fresh_repo();
+        let id = create_agent_task(&repo);
+        let server = Server::new(repo, true);
+
+        let updated = payload(&call(
+            &server,
+            "update_task",
+            json!({"id": id.as_str(), "ops": "close,+done"}),
+        ));
+        assert_eq!(updated["status"], "CLOSED");
+        assert_eq!(updated["tags"], json!(["agent", "done"]));
+
+        let fetched = payload(&call(&server, "get_task", json!({"id": id.as_str()})));
+        assert_eq!(fetched["status"], "CLOSED");
+
+        let invalid = call(
+            &server,
+            "update_task",
+            json!({"id": id.as_str(), "ops": "nope"}),
+        );
+        assert_eq!(invalid["result"]["isError"], true);
     }
 
     #[test]

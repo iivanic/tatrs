@@ -909,6 +909,20 @@ fn mcp_serves_json_rpc_over_stdio() {
 }
 
 #[test]
+fn completions_and_man_pages_are_generated() {
+    let tmp = scratch();
+    init(tmp.path());
+
+    let bash = run_in(tmp.path(), &["completions", "bash"]);
+    assert!(bash.status.success(), "{}", stderr(&bash));
+    assert!(stdout(&bash).contains("tatrs"));
+
+    let man = run_in(tmp.path(), &["man"]);
+    assert!(man.status.success(), "{}", stderr(&man));
+    assert!(stdout(&man).contains(".TH"), "{}", stdout(&man));
+}
+
+#[test]
 fn invalid_huid_argument_is_a_usage_error() {
     let tmp = scratch();
     init(tmp.path());

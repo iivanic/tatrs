@@ -104,6 +104,8 @@ Global: `--json`, `--porcelain`, `--quiet`, `--no-color`, `--cwd <path>`, `--len
 | `release` | drop a lease (M2) | `<HUID>`, `--token`, `--json` |
 | `todo` | convert `TODO:` comments | `FILES...`, `-t`, `-s`, `-y`, `--dry-run`, `--json` |
 | `mcp` | stdio MCP server (M2) | `--allow-write` |
+| `completions` | print a shell completion script | `<SHELL>` |
+| `man` | print the man page | |
 
 Examples:
 
@@ -163,11 +165,11 @@ all 94 upstream tasks parse and render back byte-identically (LF-normalized).
 ### M2 — agent surface
 `check --fix`, `ready`, `claim`/`release`, `--read-only`, non-TTY safety, structured diagnostics,
 shell completions, man page, `tatrs-mcp` read-only tools.
-**Landed 2026-11-09:** acceptance severity matrix (D-001); `ready` with `--explain`; `claim`,
+**Done 2026-11-09.** Acceptance severity matrix (D-001); `ready` with `--explain`; `claim`,
 `release`, and `claim --status` over the git-common-dir lease store with per-task locks
 (D-002/D-003); claim diagnostics and `check --fix`; `ref` ignore support; `mcp` stdio server with
-read-only defaults and `--allow-write`; `scripts/agent-flow.ps1` proving the JSON-only loop.
-**Remaining:** shell completions, man page.
+read-only defaults, `--allow-write`, and `update_task`; shell completions and man page;
+`scripts/agent-flow.ps1` proving the JSON-only loop, including closing via `update_task`.
 **Done when:** an end-to-end script lists ready work, claims, edits, closes, and unclaims using only
 JSON, with no prompts. `scripts/agent-flow.ps1` covers this path.
 
