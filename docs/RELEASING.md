@@ -54,7 +54,8 @@ docker run --rm -v "$PWD:/work" tatrs:dev ls
 ```
 
 The image is `debian:bookworm-slim`, runs as an unprivileged user, and defaults
-to `/work`. It is not published to a registry yet.
+to `/work`. It was built and exercised locally on 2026-11-09 (`version`, `ls`,
+`summary` against a mounted repository). It is not published to a registry yet.
 
 ## Known gaps
 

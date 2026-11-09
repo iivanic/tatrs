@@ -177,9 +177,11 @@ JSON, with no prompts. `scripts/agent-flow.ps1` covers this path.
 Static builds for `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`;
 GitHub Actions matrix; `cargo install` instructions; `--version` includes commit; Docker image for
 agent sandboxes.
-**In progress 2026-11-09:** CI matrix, tag-driven release workflow, packaging script (tested on
-Windows), `Dockerfile`, `docs/RELEASING.md`. First CI run, first tagged release, and a real
-`docker build` are pending — the local Docker daemon was unavailable.
+**Done 2026-11-09.** CI is green on ubuntu, macos, and windows
+([run 42661035854](https://github.com/iivanic/tatrs/actions/runs/42661035854)); tag `v0.1.0`
+published musl, macOS arm64, and Windows zips with checksums; the Windows asset was verified and
+executed; the container image was built and exercised against a mounted repository; install paths
+are documented in the README and `docs/RELEASING.md`.
 
 ### M4 — upstream and ecosystem
 PR the low-risk fixes to `tsoding/tatr` (`-y` on `todo`, `--json`, atomic writes), publish

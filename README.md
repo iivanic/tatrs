@@ -22,8 +22,9 @@ tasks/
 
 Working today: `init`, `new`, `ls` (TQL queries, batch updates, `--dry-run`), `show`, `find`, `id`,
 `ref`, `summary`, `todo`, `ready`, `claim`/`release`, `check`, `mcp`, `completions`, `man`,
-`version`. Next: release binaries and CI (M3). See `docs/PLAN.md`, `docs/QUERY.md`,
-`docs/CLAIMS.md`, and `docs/MCP.md`.
+`version`. Distribution is live: `v0.1.0` binaries and a container image. Next: M4, upstream
+patches and a standalone format spec. See `docs/PLAN.md`, `docs/QUERY.md`, `docs/CLAIMS.md`,
+and `docs/MCP.md`.
 
 ## Build
 
