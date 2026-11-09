@@ -132,11 +132,11 @@ impl std::str::FromStr for Huid {
     }
 }
 
-fn is_leap_year(year: i64) -> bool {
+pub(crate) fn is_leap_year(year: i64) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
-fn days_in_month(year: i64, month: u32) -> u32 {
+pub(crate) fn days_in_month(year: i64, month: u32) -> u32 {
     match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
@@ -148,7 +148,7 @@ fn days_in_month(year: i64, month: u32) -> u32 {
 
 /// Days since 1970-01-01 to a proleptic Gregorian civil date.
 /// Algorithm by Howard Hinnant, valid for the whole `i64` range in practice.
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
+pub(crate) fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
     let doe = (z - era * 146_097) as u64;

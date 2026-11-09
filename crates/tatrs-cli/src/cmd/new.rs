@@ -71,6 +71,13 @@ pub fn run(global: &Global, args: &NewArgs) -> Result<(), AppError> {
         Err(err) => return Err(err.into()),
     };
 
+    if task.is_agent_task() && !task.acceptance().satisfied() && !global.quiet {
+        eprintln!(
+            "tatrs: warning: agent task {} has no acceptance criteria; `ready` will skip it",
+            task.id
+        );
+    }
+
     if global.quiet {
         return Ok(());
     }

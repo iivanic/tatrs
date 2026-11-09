@@ -180,6 +180,9 @@ returned once by `claim`; `release` and `refresh` must present it. Timestamps ar
   `4` with `{"claimed": false, "owner": "...", "expires_at": "..."}`. Otherwise write the file and
   re-read it to confirm the token: two simultaneous claimers both rename, the loser sees the
   winner's token and exits `4`. Same owner re-claiming is a refresh.
+- **serialization** — the read-modify-write is guarded by a per-task `<HUID>.lock` created with
+  `O_EXCL` (stale after 5 s, wait 2 s), so claim/refresh/release cannot interleave with a steal.
+  The post-write token check remains as a second guard.
 - **refresh** — rewrite only if the stored token matches; extend `expires_at`. This is the
   heartbeat, expected every `ttl/2`.
 - **release** — delete only if the token matches. A stale agent cannot release the new owner's

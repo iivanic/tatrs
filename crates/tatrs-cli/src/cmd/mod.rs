@@ -1,12 +1,15 @@
 //! Command dispatch. Each subcommand is a thin adapter over `tatrs-core`.
 
 pub mod check;
+pub mod claim;
 pub mod find;
 pub mod id;
 pub mod init;
 pub mod ls;
 pub mod new;
+pub mod ready;
 pub mod refs;
+pub mod release;
 pub mod show;
 pub mod summary;
 pub mod todo;
@@ -45,6 +48,9 @@ pub fn dispatch(cli: Cli) -> Result<(), AppError> {
         Command::Ref(args) => refs::run(&global, &args),
         Command::Summary(args) => summary::run(&global, &args),
         Command::Todo(args) => todo::run(&global, &args),
+        Command::Ready(args) => ready::run(&global, &args),
+        Command::Claim(args) => claim::run(&global, &args),
+        Command::Release(args) => release::run(&global, &args),
         Command::Check(args) => check::run(&global, &args),
         Command::Version => version::run(&global),
     }

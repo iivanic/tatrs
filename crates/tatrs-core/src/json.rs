@@ -11,6 +11,14 @@ use crate::task::Task;
 pub const SCHEMA_VERSION: u32 = 1;
 
 #[derive(Serialize)]
+struct AcceptanceView {
+    present: bool,
+    criteria: usize,
+    waived: bool,
+    ready: bool,
+}
+
+#[derive(Serialize)]
 struct TaskView<'a> {
     schema: u32,
     id: &'a str,
@@ -20,6 +28,7 @@ struct TaskView<'a> {
     priority: i64,
     tags: &'a [String],
     closed: bool,
+    acceptance: AcceptanceView,
     props: BTreeMap<String, String>,
     body: &'a str,
 }
@@ -32,6 +41,7 @@ pub fn task_json(task: &Task, rel_path: &str) -> Value {
         .map(|property| (property.key.clone(), property.value.clone()))
         .collect();
 
+    let acceptance = task.acceptance();
     let view = TaskView {
         schema: SCHEMA_VERSION,
         id: task.id.as_str(),
@@ -41,6 +51,12 @@ pub fn task_json(task: &Task, rel_path: &str) -> Value {
         priority: task.priority,
         tags: &task.tags,
         closed: task.is_closed(),
+        acceptance: AcceptanceView {
+            present: acceptance.present,
+            criteria: acceptance.criteria,
+            waived: acceptance.waived,
+            ready: task.status == "OPEN" && task.is_agent_task() && acceptance.satisfied(),
+        },
         props,
         body: &task.body,
     };

@@ -136,7 +136,10 @@ fn check_fails_on_invalid_task() {
 fn check_is_clean_for_a_fresh_task() {
     let tmp = scratch();
     init(tmp.path());
-    run_in(tmp.path(), &["new", "Clean task", "--acceptance"]);
+    run_in(
+        tmp.path(),
+        &["new", "Clean task", "--body", "## Acceptance\n\n- [ ] done"],
+    );
     let output = run_in(tmp.path(), &["check", "--strict"]);
     assert!(output.status.success(), "check failed: {}", stdout(&output));
 }
@@ -596,6 +599,245 @@ fn todo_previews_then_converts_and_is_idempotent() {
 
     let again = json(&run_in(tmp.path(), &["todo", "main.c", "-y", "--json"]));
     assert!(again["created"].as_array().unwrap().is_empty());
+}
+
+fn create_agent(dir: &Path, title: &str, acceptance: Option<&str>) -> Value {
+    let mut args: Vec<String> = vec![
+        "new".into(),
+        title.into(),
+        "-t".into(),
+        "agent".into(),
+        "--json".into(),
+    ];
+    if let Some(body) = acceptance {
+        args.push("--body".into());
+        args.push(body.to_owned());
+    }
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = run_in(dir, &refs);
+    assert!(output.status.success(), "{}", stderr(&output));
+    json(&output)
+}
+
+fn claim_task(dir: &Path, id: &str, extra: &[&str]) -> Value {
+    let mut args = vec!["claim", id, "--json"];
+    if !extra.contains(&"--owner") {
+        args.extend_from_slice(&["--owner", "agent-3"]);
+    }
+    args.extend_from_slice(extra);
+    json(&run_in(dir, &args))
+}
+
+#[test]
+fn ready_lists_only_dispatchable_tasks() {
+    let tmp = scratch();
+    init(tmp.path());
+    let ready_id = create_agent(
+        tmp.path(),
+        "Agent ready",
+        Some("## Acceptance\n\n- [ ] tests pass"),
+    )["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    create_agent(tmp.path(), "Agent without criteria", None);
+    create(tmp.path(), "Human task", &["bug"], 10);
+
+    let ready = json(&run_in(tmp.path(), &["ready", "--json"]));
+    let tasks = ready["ready"].as_array().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0]["id"], ready_id);
+    assert_eq!(tasks[0]["acceptance"]["criteria"], 1);
+
+    let explained = json(&run_in(tmp.path(), &["ready", "--json", "--explain"]));
+    assert!(explained["excluded"].as_array().unwrap().len() >= 2);
+}
+
+#[test]
+fn claim_ready_release_round_trip() {
+    let tmp = scratch();
+    init(tmp.path());
+    let id = create_agent(tmp.path(), "Claim me", Some("## Acceptance\n\n- [ ] done"))["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let claim = claim_task(tmp.path(), &id, &["--run", "run-1"]);
+    assert_eq!(claim["claimed"], true);
+    assert_eq!(claim["owner"], "agent-3");
+    assert_eq!(claim["run"], "run-1");
+    let token = claim["token"].as_str().unwrap().to_owned();
+
+    let second = run_in(tmp.path(), &["claim", &id, "--owner", "agent-4"]);
+    assert_eq!(second.status.code(), Some(4), "{}", stderr(&second));
+
+    let ready = json(&run_in(tmp.path(), &["ready", "--json"]));
+    assert!(ready["ready"].as_array().unwrap().is_empty());
+
+    let status = json(&run_in(tmp.path(), &["claim", "--status", "--json"]));
+    assert_eq!(status["claims"][0]["state"], "live");
+    assert_eq!(status["claims"][0]["owner"], "agent-3");
+
+    let wrong = run_in(tmp.path(), &["release", &id, "--token", "wrong"]);
+    assert_eq!(wrong.status.code(), Some(4));
+
+    let released = run_in(tmp.path(), &["release", &id, "--token", &token]);
+    assert!(released.status.success(), "{}", stderr(&released));
+
+    let ready = json(&run_in(tmp.path(), &["ready", "--json"]));
+    assert_eq!(ready["ready"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn expired_claims_are_visible_and_stealable() {
+    let tmp = scratch();
+    init(tmp.path());
+    let id = create_agent(
+        tmp.path(),
+        "Short lease",
+        Some("## Acceptance\n\n- [ ] done"),
+    )["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let first = claim_task(tmp.path(), &id, &["--ttl", "0s"]);
+    assert_eq!(first["claimed"], true);
+
+    let status = json(&run_in(tmp.path(), &["claim", "--status", "--json"]));
+    assert_eq!(status["claims"][0]["state"], "expired");
+
+    let ready = json(&run_in(tmp.path(), &["ready", "--json"]));
+    assert_eq!(ready["ready"].as_array().unwrap().len(), 1);
+
+    let stolen = claim_task(tmp.path(), &id, &["--owner", "agent-4"]);
+    assert_eq!(stolen["owner"], "agent-4");
+}
+
+#[test]
+fn claim_refuses_tasks_that_are_not_ready() {
+    let tmp = scratch();
+    init(tmp.path());
+    let human = create(tmp.path(), "Human task", &["bug"], 10);
+    let output = run_in(tmp.path(), &["claim", human["id"].as_str().unwrap()]);
+    assert_eq!(output.status.code(), Some(3), "{}", stderr(&output));
+    assert!(stderr(&output).contains("agent"), "{}", stderr(&output));
+}
+
+#[test]
+fn agent_tasks_without_criteria_fail_check() {
+    let tmp = scratch();
+    init(tmp.path());
+    create_agent(tmp.path(), "No criteria", None);
+
+    let output = run_in(tmp.path(), &["check", "--json"]);
+    assert_eq!(output.status.code(), Some(3));
+    let report = json(&output);
+    assert!(
+        report["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|diagnostic| diagnostic["code"] == "E0301")
+    );
+
+    create_agent(
+        tmp.path(),
+        "With criteria",
+        Some("## Acceptance\n\n- [ ] tests pass"),
+    );
+    let clean = run_in(tmp.path(), &["check", "--json"]);
+    assert_eq!(
+        clean.status.code(),
+        Some(3),
+        "the first agent task still fails"
+    );
+}
+
+#[test]
+fn refresh_requires_the_token() {
+    let tmp = scratch();
+    init(tmp.path());
+    let id = create_agent(tmp.path(), "Heartbeat", Some("## Acceptance\n\n- [ ] done"))["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let claim = claim_task(tmp.path(), &id, &[]);
+    let token = claim["token"].as_str().unwrap().to_owned();
+
+    let refreshed = json(&run_in(
+        tmp.path(),
+        &["claim", &id, "--token", &token, "--ttl", "3h", "--json"],
+    ));
+    assert_eq!(refreshed["token"], token);
+
+    let wrong = run_in(
+        tmp.path(),
+        &["claim", &id, "--token", "wrong", "--ttl", "3h"],
+    );
+    assert_eq!(wrong.status.code(), Some(4));
+}
+
+#[test]
+fn check_fix_removes_stale_and_corrupt_claims() {
+    let tmp = scratch();
+    init(tmp.path());
+    let id = create_agent(tmp.path(), "Stale", Some("## Acceptance\n\n- [ ] done"))["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let claims_dir = tmp.path().join("tasks/.tatrs/claims");
+    std::fs::create_dir_all(&claims_dir).unwrap();
+    std::fs::write(
+        claims_dir.join(format!("{id}.json")),
+        serde_json::json!({
+            "task": id,
+            "owner": "agent-3",
+            "token": "t",
+            "acquired_at": "2020-01-01T00:00:00Z",
+            "expires_at": "2020-01-02T00:00:00Z",
+            "host": "desk",
+            "pid": 1,
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(claims_dir.join("junk.json"), "not json").unwrap();
+
+    let before = json(&run_in(tmp.path(), &["check", "--json"]));
+    let codes: Vec<&str> = before["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|diagnostic| diagnostic["code"].as_str())
+        .collect();
+    assert!(codes.contains(&"W0402"), "{codes:?}");
+    assert!(codes.contains(&"W0403"), "{codes:?}");
+
+    let blocked = run_in(tmp.path(), &["check", "--fix", "--read-only"]);
+    assert_eq!(blocked.status.code(), Some(2));
+
+    let fixed = run_in(tmp.path(), &["check", "--fix"]);
+    assert!(fixed.status.success(), "{}", stderr(&fixed));
+
+    let leftover: Vec<_> = std::fs::read_dir(&claims_dir)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(leftover.is_empty(), "{leftover:?} should have been removed");
+
+    let after = json(&run_in(tmp.path(), &["check", "--json"]));
+    let codes: Vec<&str> = after["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|diagnostic| diagnostic["code"].as_str())
+        .collect();
+    assert!(!codes.contains(&"W0402"), "{codes:?}");
+    assert!(!codes.contains(&"W0403"), "{codes:?}");
 }
 
 #[test]

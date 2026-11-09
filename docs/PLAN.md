@@ -163,10 +163,13 @@ all 94 upstream tasks parse and render back byte-identically (LF-normalized).
 ### M2 — agent surface
 `check --fix`, `ready`, `claim`/`release`, `--read-only`, non-TTY safety, structured diagnostics,
 shell completions, man page, `tatrs-mcp` read-only tools.
-**Ahead of the rest (done 2026-11-09):** `ref` honours `.gitignore` and `.git/info/exclude` via the
-`ignore` crate, with `--no-ignore` as an escape hatch.
+**Landed 2026-11-09:** acceptance severity matrix (D-001); `ready` with `--explain`; `claim`,
+`release`, and `claim --status` over the git-common-dir lease store with per-task locks
+(D-002/D-003); claim diagnostics and `check --fix`; `ref` ignore support; `scripts/agent-flow.ps1`
+proving the JSON-only loop.
+**Remaining:** shell completions, man page, `tatrs-mcp`.
 **Done when:** an end-to-end script lists ready work, claims, edits, closes, and unclaims using only
-JSON, with no prompts.
+JSON, with no prompts. `scripts/agent-flow.ps1` covers this path.
 
 ### M3 — distribution
 Static builds for `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`;

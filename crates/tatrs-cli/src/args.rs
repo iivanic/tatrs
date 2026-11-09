@@ -75,6 +75,18 @@ pub enum Command {
     /// Create tasks from TODO comments and rewrite them as TASK(<id>) markers
     Todo(TodoArgs),
 
+    /// List tasks an agent may start now
+    Ready(ReadyArgs),
+
+    /// Acquire, refresh, or inspect task leases
+    #[command(long_about = "Acquire, refresh, or inspect task leases.\n\n\
+        Leases live under the git common directory, so every worktree of this clone sees them, and \
+        they do not coordinate across machines or clones.")]
+    Claim(ClaimArgs),
+
+    /// Release a task lease
+    Release(ReleaseArgs),
+
     /// Validate the tasks/ database
     Check(CheckArgs),
 
@@ -242,8 +254,69 @@ pub struct TodoArgs {
 }
 
 #[derive(Debug, Clone, Args)]
+pub struct ReadyArgs {
+    /// Show at most N tasks
+    #[arg(long, value_name = "N")]
+    pub limit: Option<usize>,
+
+    /// Also list tasks that are not ready, with reasons
+    #[arg(long)]
+    pub explain: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ClaimArgs {
+    /// Task id to claim or refresh
+    #[arg(value_name = "HUID")]
+    pub huid: Option<String>,
+
+    /// List current leases instead of claiming
+    #[arg(long)]
+    pub status: bool,
+
+    /// Owner name recorded in the lease
+    #[arg(long, value_name = "NAME")]
+    pub owner: Option<String>,
+
+    /// Lease duration: 30s, 15m, 2h, 1d
+    #[arg(long, default_value = "2h", value_name = "DURATION")]
+    pub ttl: String,
+
+    /// Orchestrator run id recorded in the lease
+    #[arg(long, value_name = "ID")]
+    pub run: Option<String>,
+
+    /// Refresh an existing lease with this token instead of acquiring
+    #[arg(long, value_name = "TOKEN")]
+    pub token: Option<String>,
+
+    /// With --status: only these task ids
+    #[arg(long = "task", value_name = "HUID")]
+    pub tasks: Vec<String>,
+
+    /// With --status: exit 5 when there are no claims
+    #[arg(long)]
+    pub fail_if_empty: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ReleaseArgs {
+    /// Task id
+    #[arg(value_name = "HUID")]
+    pub huid: String,
+
+    /// Lease token returned by `claim`
+    #[arg(long, value_name = "TOKEN")]
+    pub token: String,
+}
+
+#[derive(Debug, Clone, Args)]
 pub struct CheckArgs {
     /// Treat warnings as failures (use this in CI)
     #[arg(long)]
     pub strict: bool,
+
+    /// Remove stale, orphaned, and corrupt claim files
+    #[arg(long)]
+    pub fix: bool,
 }

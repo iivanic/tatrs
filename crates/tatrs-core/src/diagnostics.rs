@@ -25,6 +25,14 @@ pub mod codes {
     pub const MISSING_ACCEPTANCE: &str = "W0301";
     pub const TAG_WITH_BRACKETS: &str = "W0302";
     pub const DUPLICATE_TAG: &str = "W0303";
+    pub const EMPTY_ACCEPTANCE: &str = "W0304";
+    pub const AGENT_WITHOUT_ACCEPTANCE: &str = "E0301";
+    pub const AGENT_EMPTY_ACCEPTANCE: &str = "E0304";
+    pub const ACCEPTANCE_WAIVED: &str = "I0301";
+    // Claims.
+    pub const CLAIM_ORPHANED: &str = "W0401";
+    pub const CLAIM_STALE: &str = "W0402";
+    pub const CLAIM_CORRUPT: &str = "W0403";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]

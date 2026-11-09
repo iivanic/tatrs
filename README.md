@@ -19,8 +19,9 @@ tasks/
 ## Status
 
 Working today: `init`, `new`, `ls` (TQL queries, batch updates, `--dry-run`), `show`, `find`, `id`,
-`ref`, `summary`, `todo`, `check`, `version`. Planned: claims and `ready`, `check --fix`, and the
-MCP server. See `docs/PLAN.md` and `docs/QUERY.md`.
+`ref`, `summary`, `todo`, `ready`, `claim`/`release`, `check`, `version`. Planned: `check --fix`,
+completions, man page, and the MCP server. See `docs/PLAN.md`, `docs/QUERY.md`, and
+`docs/CLAIMS.md`.
 
 ## Build
 

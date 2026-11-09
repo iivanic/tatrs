@@ -18,7 +18,7 @@ try {
         & $bin init --cwd $scratch | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "init failed" }
 
-        $created = & $bin new 'Smoke task' -t smoke,agent --acceptance --json --cwd $scratch | ConvertFrom-Json
+        $created = & $bin new 'Smoke task' -t smoke,agent --body "## Acceptance`n`n- [ ] smoke passes" --json --cwd $scratch | ConvertFrom-Json
         if ($created.schema -ne 1) { throw "unexpected schema: $($created.schema)" }
         if ($created.status -ne 'OPEN') { throw "unexpected status: $($created.status)" }
         if ($created.tags.Count -ne 2) { throw "unexpected tags: $($created.tags -join ',')" }

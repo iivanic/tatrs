@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use tatrs_core::StoreError;
+use tatrs_core::{ClaimError, StoreError};
 
 #[derive(Debug)]
 pub enum AppError {
@@ -65,5 +65,20 @@ impl From<StoreError> for AppError {
 impl From<std::io::Error> for AppError {
     fn from(err: std::io::Error) -> Self {
         AppError::Runtime(err.to_string())
+    }
+}
+
+/// Map lease errors to the CLI contract: a held or mismatched lease is lock
+/// contention (4), a missing lease is "not found" (5).
+pub fn map_claim(err: ClaimError) -> AppError {
+    let message = err.to_string();
+    match err {
+        ClaimError::Held { .. } | ClaimError::NotHeld(_) | ClaimError::LockTimeout(_) => {
+            AppError::Locked(message)
+        }
+        ClaimError::Missing(_) => AppError::NotFound(message),
+        ClaimError::Corrupt { .. } | ClaimError::Store(_) | ClaimError::Io(_) => {
+            AppError::Runtime(message)
+        }
     }
 }

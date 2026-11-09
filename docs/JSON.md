@@ -21,6 +21,7 @@
   "priority": 10,
   "tags": ["bug", "agent"],
   "closed": false,
+  "acceptance": {"present": true, "criteria": 2, "waived": false, "ready": true},
   "props": {
     "STATUS": "OPEN",
     "PRIORITY": "10",
@@ -41,6 +42,7 @@
 | `priority` | integer | `999999` when undeclared |
 | `tags` | array of strings | order preserved, duplicates preserved |
 | `closed` | boolean | `status == "CLOSED"` |
+| `acceptance` | object | `present`, `criteria` (non-empty checkboxes), `waived`, `ready` (open + `agent` tag + criteria) |
 | `props` | object | raw property map; duplicate keys collapse to the last value |
 | `body` | string | verbatim remainder, usually starts with `\n` |
 
@@ -145,6 +147,56 @@ Write (`--yes`):
 
 `todo` never prompts: without `--yes` it previews and exits `0`; `--yes` rewrites the files. The
 marker is replaced in place, so prefixes, suffixes, and line endings are preserved.
+
+## `tatrs ready --json`
+
+```json
+{"schema": 1, "ready": [ <task object>, ... ]}
+```
+
+Only tasks that pass every dispatch rule appear: open, `agent` tag, satisfied acceptance, not
+`wip`/`blocked`, dependencies closed, no live claim. Sorted by priority descending, then id.
+`--explain` adds the excluded tasks:
+
+```json
+{"schema": 1, "ready": [], "excluded": [
+  {"id": "20261109-133012", "title": "Fix parser", "reasons": ["no `## Acceptance` section"]}
+]}
+```
+
+## `tatrs claim --json`
+
+Acquire or refresh:
+
+```json
+{"schema": 1, "claimed": true, "task": "20261109-133012", "owner": "agent-3",
+ "token": "000000006af1d5910000fb7c", "acquired_at": "2026-11-09T14:15:45Z",
+ "expires_at": "2026-11-09T16:15:45Z", "run": "run-1"}
+```
+
+`token` is the proof of ownership for `refresh` and `release`. A live claim held by someone else
+exits `4`; a task that is not dispatchable exits `3`.
+
+## `tatrs claim --status --json`
+
+```json
+{"schema": 1, "claims": [
+  {"task": "20261109-133012", "owner": "agent-3", "state": "live",
+   "acquired_at": "2026-11-09T14:15:45Z", "expires_at": "2026-11-09T16:15:45Z",
+   "remaining_seconds": 7200, "host": "desk", "pid": 41232, "run": "run-1"}
+]}
+```
+
+Live claims come first, soonest expiry first, then expired ones, most recently expired first.
+`remaining_seconds` is negative once expired. `--task` filters, `--fail-if-empty` exits `5`.
+
+## `tatrs release --json`
+
+```json
+{"schema": 1, "released": true, "task": "20261109-133012"}
+```
+
+Compare-and-delete: a wrong token exits `4` and leaves the claim in place; no claim at all exits `5`.
 
 ## `tatrs check --json`
 

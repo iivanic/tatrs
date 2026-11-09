@@ -8,6 +8,8 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+use serde::Serialize;
+
 use crate::diagnostics::{Diagnostic, Severity, codes};
 use crate::huid::Huid;
 use crate::props::Properties;
@@ -20,6 +22,21 @@ pub const DEFAULT_PRIORITY: i64 = 100;
 pub const UNPRIORITIZED: i64 = 999_999;
 /// Title reported for files whose first line is not a heading.
 pub const INVALID_TITLE_SENTINEL: &str = "!!! INVALID: TASK TITLE MUST START WITH # !!!";
+
+/// Result of inspecting a task's `## Acceptance` section.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Acceptance {
+    pub present: bool,
+    /// Number of checkbox items that carry text.
+    pub criteria: usize,
+    pub waived: bool,
+}
+
+impl Acceptance {
+    pub fn satisfied(&self) -> bool {
+        self.waived || self.criteria > 0
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Task {
@@ -158,16 +175,64 @@ impl Task {
 
     /// A task can only terminate an agent loop if it states how it is verified.
     pub fn has_acceptance(&self) -> bool {
-        self.body.lines().any(|line| {
-            line.trim_start()
-                .strip_prefix("##")
-                .map(|rest| {
-                    rest.trim_start()
-                        .to_ascii_lowercase()
-                        .starts_with("acceptance")
-                })
-                .unwrap_or(false)
-        })
+        self.acceptance().present
+    }
+
+    /// Parsed `## Acceptance` section: presence, number of non-empty checkbox
+    /// criteria, and whether the task explicitly waived the requirement.
+    pub fn acceptance(&self) -> Acceptance {
+        let waived = self
+            .props
+            .get("ACCEPTANCE")
+            .is_some_and(|value| value.trim().eq_ignore_ascii_case("waived"));
+
+        let mut present = false;
+        let mut criteria = 0usize;
+        let mut in_section = false;
+
+        for line in self.body.lines() {
+            let trimmed = line.trim_start();
+            if let Some(rest) = trimmed.strip_prefix("## ") {
+                let heading = rest.trim_start().to_ascii_lowercase();
+                if heading.starts_with("acceptance") {
+                    present = true;
+                    in_section = true;
+                } else if in_section {
+                    break;
+                }
+                continue;
+            }
+            if trimmed.starts_with("# ") && in_section {
+                break;
+            }
+            if in_section && checkbox_has_text(trimmed) {
+                criteria += 1;
+            }
+        }
+
+        Acceptance {
+            present,
+            criteria,
+            waived,
+        }
+    }
+
+    pub fn is_agent_task(&self) -> bool {
+        self.tags.iter().any(|tag| tag == "agent")
+    }
+
+    /// Raw `DEPENDS` entries: comma- or whitespace-separated task ids.
+    pub fn depends(&self) -> Vec<String> {
+        self.props
+            .get("DEPENDS")
+            .map(|value| {
+                value
+                    .split(|ch: char| ch == ',' || ch.is_whitespace())
+                    .filter(|part| !part.is_empty())
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Lint rules that are not parse errors.
@@ -186,13 +251,46 @@ impl Task {
             ));
         }
 
-        if !self.is_closed() && !self.has_acceptance() {
-            out.push(Diagnostic::warning(
-                codes::MISSING_ACCEPTANCE,
-                &self.path,
-                None,
-                "no `## Acceptance` section; agents have no verifiable exit condition",
-            ));
+        if !self.is_closed() {
+            let acceptance = self.acceptance();
+            if acceptance.waived {
+                out.push(Diagnostic::new(
+                    Severity::Info,
+                    codes::ACCEPTANCE_WAIVED,
+                    &self.path,
+                    None,
+                    "acceptance requirement explicitly waived",
+                ));
+            } else if acceptance.criteria == 0 {
+                let agent = self.is_agent_task();
+                let code = match (agent, acceptance.present) {
+                    (true, false) => codes::AGENT_WITHOUT_ACCEPTANCE,
+                    (true, true) => codes::AGENT_EMPTY_ACCEPTANCE,
+                    (false, false) => codes::MISSING_ACCEPTANCE,
+                    (false, true) => codes::EMPTY_ACCEPTANCE,
+                };
+                let what = if acceptance.present {
+                    "the `## Acceptance` section has no criterion with text"
+                } else {
+                    "no `## Acceptance` section"
+                };
+                let consequence = if agent {
+                    "an `agent` task must state how it finishes before it can be dispatched"
+                } else {
+                    "agents need a verifiable exit condition; add one before tagging it `agent`"
+                };
+                out.push(Diagnostic::new(
+                    if agent {
+                        Severity::Error
+                    } else {
+                        Severity::Warning
+                    },
+                    code,
+                    &self.path,
+                    None,
+                    format!("{what}; {consequence}"),
+                ));
+            }
         }
 
         let mut seen = HashSet::new();
@@ -266,6 +364,28 @@ pub fn split_tags(raw: &str) -> Vec<String> {
         .filter(|tag| !tag.is_empty())
         .map(str::to_owned)
         .collect()
+}
+
+/// True for `- [ ] text`, `* [x] text`, and friends, where `text` is non-empty.
+fn checkbox_has_text(line: &str) -> bool {
+    let Some(rest) = line.strip_prefix('-').or_else(|| line.strip_prefix('*')) else {
+        return false;
+    };
+    let rest = rest.trim_start();
+    let Some(rest) = rest.strip_prefix('[') else {
+        return false;
+    };
+    let mut chars = rest.chars();
+    let Some(mark) = chars.next() else {
+        return false;
+    };
+    if !matches!(mark, ' ' | 'x' | 'X') {
+        return false;
+    }
+    let Some(rest) = chars.as_str().strip_prefix(']') else {
+        return false;
+    };
+    !rest.trim().is_empty()
 }
 
 fn find_property_line(content: &str, key: &str) -> Option<usize> {
@@ -583,6 +703,52 @@ mod tests {
         let task = parse("\u{feff}# T\n\n- STATUS: OPEN\n- PRIORITY: 1\n- TAGS:\n");
         assert_eq!(task.title, "T");
         assert!(task.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn acceptance_counts_only_non_empty_checkboxes() {
+        let task = parse(concat!(
+            "# T\n\n- STATUS: OPEN\n- PRIORITY: 1\n- TAGS: agent\n\n",
+            "## Acceptance\n\n- [ ] one\n- [x] two\n- [ ]\n\nProse\n"
+        ));
+        let acceptance = task.acceptance();
+        assert!(acceptance.present);
+        assert_eq!(acceptance.criteria, 2);
+        assert!(acceptance.satisfied());
+    }
+
+    #[test]
+    fn acceptance_section_ends_at_the_next_heading() {
+        let task = parse(concat!(
+            "# T\n\n- STATUS: OPEN\n- PRIORITY: 1\n- TAGS: agent\n\n",
+            "## Acceptance\n\n- [ ] one\n\n## Notes\n\n- [ ] not a criterion\n"
+        ));
+        assert_eq!(task.acceptance().criteria, 1);
+    }
+
+    #[test]
+    fn waived_acceptance_is_info_not_an_error() {
+        let task =
+            parse("# T\n\n- STATUS: OPEN\n- PRIORITY: 1\n- TAGS: agent\n- ACCEPTANCE: waived\n");
+        assert!(task.acceptance().waived);
+        let lint = task.lint();
+        assert!(lint.iter().any(|d| d.code == codes::ACCEPTANCE_WAIVED));
+        assert!(!lint.iter().any(|d| d.is_error()));
+    }
+
+    #[test]
+    fn agent_tasks_escalate_missing_acceptance() {
+        let agent = parse("# T\n\n- STATUS: OPEN\n- PRIORITY: 1\n- TAGS: agent\n");
+        assert!(agent.lint().iter().any(|d| {
+            d.code == codes::AGENT_WITHOUT_ACCEPTANCE && d.severity == Severity::Error
+        }));
+
+        let human = parse("# T\n\n- STATUS: OPEN\n- PRIORITY: 1\n- TAGS: bug\n");
+        assert!(
+            human.lint().iter().any(|d| {
+                d.code == codes::MISSING_ACCEPTANCE && d.severity == Severity::Warning
+            })
+        );
     }
 
     #[test]

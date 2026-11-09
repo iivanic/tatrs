@@ -50,6 +50,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 pwsh -File scripts/smoke.ps1          # end-to-end on Windows
 pwsh -File scripts/compat.ps1         # read reference/tatr/tasks if present
+pwsh -File scripts/agent-flow.ps1     # ready -> claim -> close -> release, JSON only
 ```
 
 Run all of them before declaring work done. `clippy -D warnings` is not advisory.

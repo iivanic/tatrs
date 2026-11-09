@@ -104,7 +104,7 @@ the description. Consequences:
 ### 3.4 Acceptance section
 
 `tatrs check` requires open tasks to contain a level-2 heading whose text starts with `Acceptance`
-(case-insensitive), e.g.:
+(case-insensitive) and at least one checkbox item with text, e.g.:
 
 ```markdown
 ## Acceptance
@@ -113,8 +113,14 @@ the description. Consequences:
 - [ ] no existing fixture changes output
 ```
 
-This is the only contract an automated worker has for "done". `W0301` is a warning by default and a
-failure under `--strict`.
+Only `- [ ]` / `- [x]` items with non-empty text count; a heading alone or an empty checkbox does
+not. The section ends at the next heading. Closed tasks are never linted. `ACCEPTANCE: waived` opts
+out explicitly and produces an informational diagnostic.
+
+Severity depends on the promise the task makes (`docs/DECISIONS.md` D-001): a task tagged `agent`
+fails `check` when it has no criteria (`E0301`/`E0304`), while a human task only warns
+(`W0301`/`W0304`). `tatrs ready` and `tatrs claim` refuse any task that does not pass the agent
+rule, regardless of `check` settings.
 
 ## 4. Rendering
 
@@ -170,8 +176,15 @@ Codes are stable and part of the JSON API.
 | `W0204` | warning | leftover temporary file (`.tmp-*`) |
 | `E0205` | error | `tasks/` cannot be read |
 | `W0301` | warning | open task has no `## Acceptance` section |
+| `W0304` | warning | acceptance section has no criterion with text |
+| `E0301` | error | `agent` task has no `## Acceptance` section |
+| `E0304` | error | `agent` task's acceptance section has no criterion with text |
+| `I0301` | info | `ACCEPTANCE: waived` |
 | `W0302` | warning | tag contains `[` or `]`, which TQL cannot express |
 | `W0303` | warning | duplicate tag |
+| `W0401` | warning | claim refers to an unknown or closed task |
+| `W0402` | warning | claim expired more than a day ago |
+| `W0403` | warning | claim file is corrupt |
 
 ## 8. Compatibility
 

@@ -422,6 +422,12 @@ pub fn init(root: &Path) -> Result<InitOutcome, StoreError> {
         fs::write(&readme, body)?;
     }
 
+    // Claim fallback lives here when the project is not a git repository.
+    let gitignore = tasks_dir.join(".gitignore");
+    if !gitignore.exists() {
+        fs::write(&gitignore, ".tatrs/\n")?;
+    }
+
     Ok(InitOutcome { created, tasks_dir })
 }
 
