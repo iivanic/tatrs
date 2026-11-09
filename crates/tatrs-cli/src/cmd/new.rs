@@ -92,7 +92,7 @@ pub fn run(global: &Global, args: &NewArgs) -> Result<(), AppError> {
 /// Body from `--body`, `--body-file`, `--acceptance`, or empty. A single blank
 /// line is guaranteed between the property block and the body.
 fn task_body(args: &NewArgs) -> Result<String, AppError> {
-    let mut body = if let Some(path) = &args.body_file {
+    let raw = if let Some(path) = &args.body_file {
         if path.as_os_str() == "-" {
             let mut buffer = String::new();
             std::io::stdin()
@@ -111,6 +111,13 @@ fn task_body(args: &NewArgs) -> Result<String, AppError> {
     } else {
         String::new()
     };
+
+    // The format is LF and BOM-free; normalize at the write boundary so callers
+    // can pipe in files produced on any platform.
+    let mut body = raw
+        .trim_start_matches('\u{feff}')
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
 
     if !body.is_empty() {
         if !body.starts_with('\n') {

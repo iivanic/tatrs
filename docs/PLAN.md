@@ -99,8 +99,9 @@ Global: `--json`, `--porcelain`, `--quiet`, `--no-color`, `--cwd <path>`, `--len
 | `ref` | find references to a HUID | `<HUID>`, `--json` |
 | `summary` | counts by status/tag/priority | `--json` |
 | `check` | validate tree | `--fix`, `--strict`, `--json` |
-| `ready` | runnable tasks (M3) | `--json`, `--limit n` |
-| `claim`/`release` | lease a task (M3) | `--owner`, `--ttl`, `--json` |
+| `ready` | runnable tasks (M2) | `--json`, `--limit`, `--explain` |
+| `claim` | lease a task (M2) | `<HUID>`, `--owner`, `--ttl`, `--run`, `--refresh`, `--json` |
+| `release` | drop a lease (M2) | `<HUID>`, `--token`, `--json` |
 | `todo` | convert `TODO:` comments (M2) | files, `-y`, `--dry-run`, `-t` |
 | `mcp` | stdio MCP server (M4) | `--allow-write` |
 
@@ -133,8 +134,10 @@ unless `--fail-if-empty`, which returns `5`.
   (`try_lock` with `--timeout`, default 5s; exit `4` on failure).
 - **Crashes:** a rename is atomic on the same volume, so a task file is either old or new, never
   truncated. Temp files are named `.tmp-<pid>-<rand>` and cleaned by `check --fix`.
-- **Claims:** stored as properties `OWNER`, `CLAIMED`, `EXPIRES`; `ready` excludes unexpired claims
-  and `wip`. No daemon, so expiry is evaluated on read.
+- **Claims:** leases live outside the working tree, under `<git-common-dir>/tatrs/claims/`, so all
+  worktrees of one clone see them and nothing is ever committed. `ready` excludes unexpired claims
+  and `wip`; expiry is evaluated on read. See `docs/DECISIONS.md` D-002 for the protocol and the
+  explicit cross-machine limitation.
 
 ## 6. Milestones
 
@@ -200,5 +203,6 @@ PR the low-risk fixes to `tsoding/tatr` (`-y` on `todo`, `--json`, atomic writes
 - Should `check` treat a missing `## Acceptance` as warning or error by default? (proposed: warning;
   error under `--strict`, which CI uses)
 - Do we need a `TASKS.md` index artifact for PR review, or is `tatrs summary` enough?
-- Claim TTL default (proposed: 2h) and whether claims belong in `TASK.md` or a sidecar file to avoid
-  merge conflicts on long-lived branches.
+- Cross-machine coordination: out of scope until someone needs it; the local lease is per clone
+  (`docs/DECISIONS.md` D-002). What is the cheapest opt-in that would help — publishing `OWNER` on
+  claim, or a queue integration?

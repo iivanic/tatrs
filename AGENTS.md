@@ -28,6 +28,9 @@ Read before changing anything: `docs/CONCLUSION.md`, `docs/PLAN.md`, `docs/FORMA
    `PathBuf`, handle CRLF input, write LF.
 8. **Errors are data.** Every failure carries a path, an optional line, and a stable machine-readable
    code so agents can branch on it. No `unwrap`/`expect` on user input in `tatrs-core`.
+9. **Ephemeral state stays out of git.** Claims, locks, and run state live under the git common dir,
+   never in `TASK.md`. Decisions D-001 and D-002 in `docs/DECISIONS.md` are binding: acceptance is
+   enforced at dispatch, and leases are local to a clone.
 
 ## Layout
 

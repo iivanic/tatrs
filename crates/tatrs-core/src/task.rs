@@ -67,6 +67,8 @@ impl Task {
     /// upstream, while `check` reports the damage.
     pub fn parse(id: Huid, content: &str, path: impl Into<PathBuf>) -> Self {
         let path = path.into();
+        // A UTF-8 BOM before the title would otherwise read as a missing `#`.
+        let content = content.strip_prefix('\u{feff}').unwrap_or(content);
         let normalized = content.replace("\r\n", "\n");
         let mut parser = Parser::new(&normalized, path.clone());
         let (title, title_ok) = parser.parse_title();
@@ -567,6 +569,13 @@ mod tests {
     fn body_is_preserved_verbatim() {
         let source = "# T\n\n- STATUS: OPEN\n- PRIORITY: 1\n- TAGS:\n\n  indented\n\n\n- list\n";
         assert_eq!(parse(source).render(), source);
+    }
+
+    #[test]
+    fn utf8_bom_is_tolerated() {
+        let task = parse("\u{feff}# T\n\n- STATUS: OPEN\n- PRIORITY: 1\n- TAGS:\n");
+        assert_eq!(task.title, "T");
+        assert!(task.diagnostics.is_empty());
     }
 
     #[test]

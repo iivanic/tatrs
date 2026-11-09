@@ -76,7 +76,7 @@ Because keys cannot contain separators, the agent-workflow properties are single
 
 | Key | Meaning |
 |-|-|
-| `OWNER` | human or agent currently responsible |
+| `OWNER` | durable assignment: who is accountable for the task |
 | `AGENT` | agent/runtime name, e.g. `claude-code`, `dsh` |
 | `BRANCH` | branch or worktree the work is happening in |
 | `WORKTREE` | absolute or repo-relative worktree path |
@@ -142,8 +142,10 @@ Tags are free-form, but these are reserved by convention so tools can rely on th
 | `blocked` | waiting on a human or an external event |
 | `needs-human` | requires a decision, not just time |
 
-`STATUS` stays binary (`OPEN`/`CLOSED`); lifecycle belongs in tags. `tatrs claim` (planned) writes
-`OWNER`, `CLAIMED`, `EXPIRES` rather than a new status.
+`STATUS` stays binary (`OPEN`/`CLOSED`); lifecycle belongs in tags. `OWNER` records durable
+accountability, not a lease: active claims are ephemeral runtime state and never enter `TASK.md`
+(see `docs/DECISIONS.md` D-002). `ACCEPTANCE: waived` opts a task out of the acceptance rule
+(D-001).
 
 ## 7. Diagnostics
 

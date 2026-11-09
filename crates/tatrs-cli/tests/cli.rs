@@ -248,6 +248,27 @@ fn body_flags_are_applied() {
 }
 
 #[test]
+fn body_line_endings_are_normalized() {
+    let tmp = scratch();
+    init(tmp.path());
+
+    let created = json(&run_in(
+        tmp.path(),
+        &[
+            "new",
+            "CRLF body",
+            "--body",
+            "line one\r\nline two",
+            "--json",
+        ],
+    ));
+    let rel = created["path"].as_str().unwrap();
+    let raw = std::fs::read_to_string(tmp.path().join(rel)).unwrap();
+    assert!(!raw.contains('\r'), "TASK.md must be LF-only: {raw:?}");
+    assert!(raw.ends_with("line one\nline two\n"));
+}
+
+#[test]
 fn invalid_huid_argument_is_a_usage_error() {
     let tmp = scratch();
     init(tmp.path());
