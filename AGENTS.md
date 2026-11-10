@@ -101,3 +101,7 @@ close it when the acceptance section passes. This doubles as an integration test
 - No GPL code copied; no new dependency without a note in the commit message explaining why std
   cannot do it.
 - If you touched the format, the upstream corpus still round-trips.
+
+## Tatrs usage
+
+- ALWAYS use tatrs for work in this repository
