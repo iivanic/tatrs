@@ -15,6 +15,8 @@ path = "src/main.rs"
 clap.workspace = true
 clap_complete.workspace = true
 clap_mangen.workspace = true
+ignore.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tatrs-core = { path = "../tatrs-core" }
 tatrs-mcp = { path = "../tatrs-mcp" }

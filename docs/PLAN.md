@@ -15,8 +15,7 @@ tatrs/
 |  +- CONCLUSION.md
 |  +- PLAN.md
 |  +- FORMAT.md            # normative grammar, incl. upstream quirks
-|  +- JSON.md              # versioned output schema
-+- crates/
+|  +- JSON.md              # versioned output schema|  +- DASHBOARD.md        # derived lifecycle and the live board+- crates/
 |  +- tatrs-core/          # library: no I/O policy, no CLI
 |  |  +- src/huid.rs
 |  |  +- src/props.rs
@@ -26,6 +25,7 @@ tatrs/
 |  |  +- src/store.rs
 |  |  +- src/diagnostics.rs
 |  |  +- src/json.rs
+|  |  +- src/lifecycle.rs
 |  |  +- tests/
 |  +- tatrs-cli/           # binary `tatrs`
 |  |  +- src/main.rs
@@ -53,6 +53,7 @@ stays clean-room; the upstream corpus is used only as an external compatibility 
 | `store` | discovery of `tasks/`, load-all, atomic save, ID allocation, advisory lock |
 | `diagnostics` | structured warnings/errors with path + line, severity |
 | `json` | versioned serialization of tasks, diagnostics, results |
+| `lifecycle` | derived supervisor states from status, leases, `DEPENDS`, reserved tags, and activity |
 
 `tatrs-cli` maps flags → core calls, formats output, owns exit codes. `tatrs-mcp` is a thin adapter
 over the same core; it must not grow logic of its own.
@@ -104,6 +105,7 @@ Global: `--json`, `--porcelain`, `--quiet`, `--no-color`, `--cwd <path>`, `--len
 | `release` | drop a lease (M2) | `<HUID>`, `--token`, `--json` |
 | `todo` | convert `TODO:` comments | `FILES...`, `-t`, `-s`, `-y`, `--dry-run`, `--json` |
 | `mcp` | stdio MCP server (M2) | `--allow-write` |
+| `serve` | live read-only board over HTTP + SSE (M5) | `--bind`, `--port`, `--poll`, `--stale`, `--no-browse`, `--max-file`, `--allow-remote` |
 | `completions` | print a shell completion script | `<SHELL>` |
 | `man` | print the man page | |
 
@@ -121,7 +123,7 @@ $ tatrs ready --json --limit 5
 ```
 
 Implemented: `init`, `new`, `ls` (including TQL and `--update`), `show`, `find`, `id`, `ref`,
-`summary`, `todo`, `check`, `version`. Everything else in the table is specified for M2–M4.
+`summary`, `todo`, `check`, `version`, `serve`. Everything else in the table is specified for M2–M4.
 
 Exit codes: `0` success, `1` runtime/IO error, `2` usage error, `3` invalid data (`check` failures,
 malformed `TASK.md`), `4` lock contention/timeout, `5` not found. `ls` with no matches exits `0`
@@ -187,6 +189,23 @@ are documented in the README and `docs/RELEASING.md`.
 PR the low-risk fixes to `tsoding/tatr` (`-y` on `todo`, `--json`, atomic writes), publish
 `docs/FORMAT.md` as a standalone spec, provide a `tatr` → `tatrs` migration note, and an
 `emacs`/`vim` quickstart snippet.
+
+### M5 — supervision (in progress)
+A human supervising parallel agent work needs one screen that answers "where is everything, and
+what needs me?". `tatrs` answers it by **deriving** six lifecycle states instead of extending
+`STATUS` (`docs/DECISIONS.md` D-004), and `tatrs serve` publishes them as a loopback-only, read-only
+board (`docs/DASHBOARD.md`).
+
+- `tatrs-core::lifecycle` — pure derivation from `STATUS`, leases, `DEPENDS`, reserved tags, and
+  file activity; contradictions become flags, never silent overrides.
+- `summary --json` gains an additive `lifecycle` count object; the human output gains a block.
+- `tatrs serve` — `TcpListener` + threads, no new dependency; SSE for push, a 1s sweep that
+  re-parses only changed files; dashboard embedded with `include_str!`.
+- Reserved tags `paused`, `refused`, `notify` documented in `docs/FORMAT.md` §6.
+
+**Done when:** `summary --json` reports all six states on a mixed tree, `tatrs serve` serves the
+board and blocks path traversal, and the CLI integration tests cover both
+(`crates/tatrs-cli/tests/cli.rs`).
 
 ## 7. Testing strategy
 

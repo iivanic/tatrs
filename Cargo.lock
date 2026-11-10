@@ -419,6 +419,8 @@ dependencies = [
  "clap",
  "clap_complete",
  "clap_mangen",
+ "ignore",
+ "serde",
  "serde_json",
  "tatrs-core",
  "tatrs-mcp",

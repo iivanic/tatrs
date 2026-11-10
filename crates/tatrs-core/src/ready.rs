@@ -36,7 +36,7 @@ pub fn evaluate(task: &Task, all: &[Task], claim: Option<&Claim>, now: i64) -> R
         });
     }
 
-    for tag in ["wip", "blocked"] {
+    for tag in ["wip", "blocked", "paused"] {
         if task.tags.iter().any(|candidate| candidate == tag) {
             blockers.push(format!("tagged `{tag}`"));
         }
@@ -106,6 +106,12 @@ mod tests {
     fn wip_and_blocked_tags_stop_dispatch() {
         let task = with_body(sample(&["agent", "wip"]), "## Acceptance\n\n- [ ] fixed\n");
         assert!(!evaluate(&task, std::slice::from_ref(&task), None, 0).ready);
+
+        let paused = with_body(
+            sample(&["agent", "paused"]),
+            "## Acceptance\n\n- [ ] fixed\n",
+        );
+        assert!(!evaluate(&paused, std::slice::from_ref(&paused), None, 0).ready);
     }
 
     #[test]

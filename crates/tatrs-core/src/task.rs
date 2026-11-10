@@ -29,12 +29,20 @@ pub struct Acceptance {
     pub present: bool,
     /// Number of checkbox items that carry text.
     pub criteria: usize,
+    /// Number of those criteria already checked (`- [x]`).
+    pub checked: usize,
     pub waived: bool,
 }
 
 impl Acceptance {
     pub fn satisfied(&self) -> bool {
         self.waived || self.criteria > 0
+    }
+
+    /// Criteria exist but at least one is still unchecked. This is the signal a
+    /// supervisor needs: the task claims to be finished without proving it.
+    pub fn unverified(&self) -> bool {
+        self.criteria > 0 && self.checked < self.criteria
     }
 }
 
@@ -188,6 +196,7 @@ impl Task {
 
         let mut present = false;
         let mut criteria = 0usize;
+        let mut checked = 0usize;
         let mut in_section = false;
 
         for line in self.body.lines() {
@@ -205,14 +214,18 @@ impl Task {
             if trimmed.starts_with("# ") && in_section {
                 break;
             }
-            if in_section && checkbox_has_text(trimmed) {
+            if in_section && let Some(is_checked) = checkbox_state(trimmed) {
                 criteria += 1;
+                if is_checked {
+                    checked += 1;
+                }
             }
         }
 
         Acceptance {
             present,
             criteria,
+            checked,
             waived,
         }
     }
@@ -387,26 +400,23 @@ pub fn normalize_body(raw: &str) -> String {
     body
 }
 
-/// True for `- [ ] text`, `* [x] text`, and friends, where `text` is non-empty.
-fn checkbox_has_text(line: &str) -> bool {
-    let Some(rest) = line.strip_prefix('-').or_else(|| line.strip_prefix('*')) else {
-        return false;
-    };
+/// `Some(is_checked)` for `- [ ] text`, `* [x] text`, and friends, where `text`
+/// is non-empty; `None` for anything else, including empty checkboxes.
+fn checkbox_state(line: &str) -> Option<bool> {
+    let rest = line.strip_prefix('-').or_else(|| line.strip_prefix('*'))?;
     let rest = rest.trim_start();
-    let Some(rest) = rest.strip_prefix('[') else {
-        return false;
-    };
+    let rest = rest.strip_prefix('[')?;
     let mut chars = rest.chars();
-    let Some(mark) = chars.next() else {
-        return false;
-    };
+    let mark = chars.next()?;
     if !matches!(mark, ' ' | 'x' | 'X') {
-        return false;
+        return None;
     }
-    let Some(rest) = chars.as_str().strip_prefix(']') else {
-        return false;
-    };
-    !rest.trim().is_empty()
+    let rest = chars.as_str().strip_prefix(']')?;
+    if rest.trim().is_empty() {
+        None
+    } else {
+        Some(matches!(mark, 'x' | 'X'))
+    }
 }
 
 fn find_property_line(content: &str, key: &str) -> Option<usize> {

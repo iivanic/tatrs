@@ -42,7 +42,7 @@ $ tatrs release 20261109-133012 --token <token>
 1. `STATUS: OPEN`;
 2. the `agent` tag (the dispatch contract);
 3. a satisfied acceptance section — a non-empty `- [ ]` criterion, or `ACCEPTANCE: waived`;
-4. no `wip` or `blocked` tag;
+4. no `wip`, `blocked`, or `paused` tag;
 5. every `DEPENDS` entry closed and present;
 6. no live claim.
 

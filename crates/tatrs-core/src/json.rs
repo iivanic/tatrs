@@ -14,6 +14,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 struct AcceptanceView {
     present: bool,
     criteria: usize,
+    checked: usize,
     waived: bool,
     ready: bool,
 }
@@ -54,6 +55,7 @@ pub fn task_json(task: &Task, rel_path: &str) -> Value {
         acceptance: AcceptanceView {
             present: acceptance.present,
             criteria: acceptance.criteria,
+            checked: acceptance.checked,
             waived: acceptance.waived,
             ready: task.status == "OPEN" && task.is_agent_task() && acceptance.satisfied(),
         },

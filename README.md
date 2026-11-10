@@ -21,10 +21,10 @@ tasks/
 ## Status
 
 Working today: `init`, `new`, `ls` (TQL queries, batch updates, `--dry-run`), `show`, `find`, `id`,
-`ref`, `summary`, `todo`, `ready`, `claim`/`release`, `check`, `mcp`, `completions`, `man`,
-`version`. Distribution is live: `v0.1.0` binaries and a container image. Next: M4, upstream
+`ref`, `summary`, `todo`, `ready`, `claim`/`release`, `check`, `mcp`, `serve`, `completions`,
+`man`, `version`. Distribution is live: `v0.1.0` binaries and a container image. Next: M4, upstream
 patches and a standalone format spec. See `docs/PLAN.md`, `docs/QUERY.md`, `docs/CLAIMS.md`,
-and `docs/MCP.md`.
+`docs/DASHBOARD.md`, and `docs/MCP.md`.
 
 ## Build
 
@@ -79,13 +79,28 @@ src/parser.c:88:// TASK(20261109-133012): remove the retry once the flake is fix
 $ tatrs summary
 STATUS:   OPEN
 TOTAL:    3
+LIFECYCLE:
+    received      1
+    in progress   1
+    paused        0
+    waiting       1
+    completed     0
+    refused       0
+    ready         1
+    attention     0
 TAGGED:
        agent =>   2
 
 $ tatrs todo src/parser.c -y -t cleanup
 
 $ tatrs check --strict
+
+$ tatrs serve                     # live board at http://127.0.0.1:7787/?t=…
 ```
+
+`tatrs serve` derives the six lifecycle states from tags, leases, and `DEPENDS`, pushes changes over
+server-sent events, and lets you read repository Markdown and code in the same page without losing
+the status rail (`docs/DASHBOARD.md`).
 
 ## Docs
 
@@ -93,6 +108,7 @@ $ tatrs check --strict
 - `docs/PLAN.md` — architecture, milestones, CLI and exit-code contracts.
 - `docs/QUERY.md` — TQL and the update language, with precedence and type rules.
 - `docs/CLAIMS.md` — leases, readiness, and the agent workflow.
+- `docs/DASHBOARD.md` — derived lifecycle states and the live board.
 - `docs/MCP.md` — the stdio MCP server and its tools.
 - `docs/FORMAT.md` — the normative `TASK.md` grammar, including upstream quirks.
 - `docs/JSON.md` — versioned output schema.

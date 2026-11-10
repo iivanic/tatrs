@@ -13,6 +13,7 @@ pub mod new;
 pub mod ready;
 pub mod refs;
 pub mod release;
+pub mod serve;
 pub mod show;
 pub mod summary;
 pub mod todo;
@@ -55,6 +56,7 @@ pub fn dispatch(cli: Cli) -> Result<(), AppError> {
         Command::Claim(args) => claim::run(&global, &args),
         Command::Release(args) => release::run(&global, &args),
         Command::Mcp(args) => mcp::run(&global, &args),
+        Command::Serve(args) => serve::run(&global, &args),
         Command::Check(args) => check::run(&global, &args),
         Command::Completions(args) => completions::run(&global, &args),
         Command::Man => man::run(&global),

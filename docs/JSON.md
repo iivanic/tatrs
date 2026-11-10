@@ -42,7 +42,7 @@
 | `priority` | integer | `999999` when undeclared |
 | `tags` | array of strings | order preserved, duplicates preserved |
 | `closed` | boolean | `status == "CLOSED"` |
-| `acceptance` | object | `present`, `criteria` (non-empty checkboxes), `waived`, `ready` (open + `agent` tag + criteria) |
+| `acceptance` | object | `present`, `criteria` (non-empty checkboxes), `checked` (of those, `- [x]`), `waived`, `ready` (open + `agent` tag + criteria) |
 | `props` | object | raw property map; duplicate keys collapse to the last value |
 | `body` | string | verbatim remainder, usually starts with `\n` |
 
@@ -122,12 +122,29 @@ across machines. `--no-ignore` scans ignored files too.
   ],
   "priorities": [
     {"priority": 100, "count": 3}
-  ]
+  ],
+  "lifecycle": {
+    "total": 9,
+    "received": 3,
+    "in_progress": 1,
+    "paused": 1,
+    "waiting": 2,
+    "completed": 1,
+    "refused": 1,
+    "ready": 2,
+    "attention": 1
+  }
 }
 ```
 
 `tags` is sorted by count descending, then name. `priorities` is sorted by priority descending.
 `description` comes from the optional `tasks/tags` file and is `null` when absent.
+
+`lifecycle` is the derived supervisor view (`docs/DASHBOARD.md`). Unlike the other fields it spans
+open **and** closed tasks and ignores `--closed`; `ready` counts open tasks that pass every dispatch
+rule, and `attention` counts tasks carrying at least one flag. The derivation is computed from the
+claim store and file activity at call time, so the same tree can produce different counts a minute
+later.
 
 ## `tatrs todo --json`
 
@@ -197,6 +214,53 @@ Live claims come first, soonest expiry first, then expired ones, most recently e
 ```
 
 Compare-and-delete: a wrong token exits `4` and leaves the claim in place; no claim at all exits `5`.
+
+## `tatrs serve`
+
+Long-running and read-only. With `--json` it prints one object and keeps serving:
+
+```json
+{"schema": 1, "url": "http://127.0.0.1:7787/?t=8f2c1d0a59b7e314", "root": "/repo",
+ "browse": true, "poll_ms": 1000}
+```
+
+The URL carries a per-session capability token; opening it sets an `HttpOnly` cookie so the page's
+fetches and the event stream authenticate. All routes are `GET` and require the token:
+
+| Route | Body |
+|-|-|
+| `/` | the dashboard: one self-contained HTML file |
+| `/events` | `text/event-stream`; one `board` event per change, plus a comment keepalive |
+| `/api/status` | the latest snapshot (below) |
+| `/api/task/<HUID>` | a task object plus a `lifecycle` object |
+| `/api/tree` | `{"schema":1,"truncated":false,"entries":[{"path":"src/main.rs","dir":false}]}` |
+| `/api/file?path=REL` | UTF-8 file contents as `text/plain` |
+
+Snapshot:
+
+```json
+{
+  "schema": 1,
+  "version": 7,
+  "generated_at": "2026-11-10T22:06:27Z",
+  "counts": {"total": 9, "received": 3, "in_progress": 1, "paused": 1, "waiting": 2,
+             "completed": 1, "refused": 1, "ready": 2, "attention": 1},
+  "tasks": [
+    {"id": "20261109-133012", "title": "Fix parser", "state": "in_progress",
+     "also": [], "declared": false, "owner": "agent-3", "run": "run-1",
+     "since": "2026-11-10T20:00:00Z", "flags": [], "ready": false,
+     "priority": 10, "tags": ["bug", "agent"], "path": "tasks/20261109-133012/TASK.md"}
+  ]
+}
+```
+
+`version` increases on every recomputation, so a reconnecting client can skip a redundant render.
+`state` is the derived lifecycle (`docs/DASHBOARD.md`), `declared` distinguishes a tag-driven state
+from an observed one, and `since` is ISO-8601 UTC, best effort. `also` lists the other lifecycle
+states that also hold (for example a paused task whose dependency is still open), ordered by board
+rank; counting always uses `state`, so the six state counts partition the tree. Bodies are excluded
+from snapshots (they are fetched per task) to keep the broadcast small.
+
 
 ## `tatrs check --json`
 

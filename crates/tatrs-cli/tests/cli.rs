@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
@@ -930,4 +930,130 @@ fn invalid_huid_argument_is_a_usage_error() {
     let output = run_in(tmp.path(), &["show", "not-an-id"]);
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr(&output).contains("not a task id"));
+}
+
+#[test]
+fn summary_reports_derived_lifecycle() {
+    let tmp = scratch();
+    init(tmp.path());
+    create(tmp.path(), "Received", &["bug"], 10);
+    create(tmp.path(), "Paused", &["paused"], 10);
+    create(tmp.path(), "Waiting", &["blocked"], 10);
+
+    let done = create(tmp.path(), "Done", &[], 10);
+    run_in(
+        tmp.path(),
+        &["ls", "-u", "close", done["id"].as_str().unwrap()],
+    );
+    let refused = create(tmp.path(), "Refused", &["refused"], 10);
+    run_in(
+        tmp.path(),
+        &["ls", "-u", "close", refused["id"].as_str().unwrap()],
+    );
+
+    let summary = json(&run_in(tmp.path(), &["summary", "--json"]));
+    let lifecycle = &summary["lifecycle"];
+    assert_eq!(lifecycle["total"], 5);
+    assert_eq!(lifecycle["received"], 1);
+    assert_eq!(lifecycle["paused"], 1);
+    assert_eq!(lifecycle["waiting"], 1);
+    assert_eq!(lifecycle["completed"], 1);
+    assert_eq!(lifecycle["refused"], 1);
+    assert_eq!(lifecycle["ready"], 0);
+
+    // Lifecycle is derived, so closing a task moves it without touching tags.
+    let waiting = run_in(tmp.path(), &["ls", ":blocked", "--json"]);
+    let waiting_id = json(&waiting)["tasks"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    run_in(tmp.path(), &["ls", "-u", "close", &waiting_id]);
+    let after = json(&run_in(tmp.path(), &["summary", "--json"]));
+    assert_eq!(after["lifecycle"]["waiting"], 0);
+    assert_eq!(after["lifecycle"]["completed"], 2);
+}
+
+fn http_get(addr: &str, target: &str) -> String {
+    let mut stream = std::net::TcpStream::connect(addr).unwrap();
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .unwrap();
+    write!(
+        stream,
+        "GET {target} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    response
+}
+
+fn http_json(response: &str) -> Value {
+    let (head, body) = response.split_once("\r\n\r\n").expect("no headers");
+    assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+    serde_json::from_str(body).unwrap_or_else(|err| panic!("invalid json: {err}\n{body}"))
+}
+
+#[test]
+fn serve_exposes_a_read_only_board() {
+    let tmp = scratch();
+    init(tmp.path());
+    create(tmp.path(), "Paused task", &["paused"], 10);
+
+    let mut child = tatrs()
+        .current_dir(tmp.path())
+        .args(["serve", "--port", "0", "--poll", "200ms", "--json"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut line = String::new();
+    stdout.read_line(&mut line).unwrap();
+    let announced: Value = serde_json::from_str(line.trim()).unwrap();
+    assert_eq!(announced["schema"], 1);
+    let url = announced["url"].as_str().unwrap().to_owned();
+    let addr = url
+        .strip_prefix("http://")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    let token = url.split("t=").nth(1).unwrap().to_owned();
+
+    let unauthorized = http_get(&addr, "/api/status");
+    assert!(unauthorized.starts_with("HTTP/1.1 401"), "{unauthorized}");
+
+    let status = http_json(&http_get(&addr, &format!("/api/status?t={token}")));
+    assert_eq!(status["schema"], 1);
+    assert_eq!(status["counts"]["paused"], 1);
+    assert_eq!(status["counts"]["total"], 1);
+    assert_eq!(status["tasks"][0]["state"], "paused");
+    assert_eq!(status["tasks"][0]["declared"], true);
+    assert_eq!(status["tasks"][0]["also"], serde_json::json!([]));
+
+    let page = http_get(&addr, &format!("/?t={token}"));
+    assert!(page.contains("live board"), "{page}");
+
+    let escape = http_get(
+        &addr,
+        &format!("/api/file?path=..%2F..%2Fetc%2Fpasswd&t={token}"),
+    );
+    assert!(escape.starts_with("HTTP/1.1 403"), "{escape}");
+
+    // A change on disk bumps the version the SSE stream would carry.
+    let task_file = tmp
+        .path()
+        .join(status["tasks"][0]["path"].as_str().unwrap());
+    let original = std::fs::read_to_string(&task_file).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    std::fs::write(&task_file, &original).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    let updated = http_json(&http_get(&addr, &format!("/api/status?t={token}")));
+    assert!(updated["version"].as_u64() > status["version"].as_u64());
+
+    child.kill().unwrap();
+    let _ = child.wait();
 }

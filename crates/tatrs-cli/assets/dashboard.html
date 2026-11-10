@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>tatrs · live board</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr);
+    background: #0e1014;
+    color: #d8dbe2;
+    font: 14px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  a { color: #7fb0ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .mono, code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .muted { color: #8b93a3; font-size: 12px; }
+  .error { color: #ff8d8d; }
+
+  #rail {
+    border-right: 1px solid #20242c;
+    padding: 16px 16px 8px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    background: #0b0d11;
+  }
+  .brand { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .brand strong { font-size: 16px; letter-spacing: 0.04em; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #6b7280; margin-right: 6px; vertical-align: 1px; }
+  .dot.on { background: #3ddc84; box-shadow: 0 0 8px #3ddc8499; }
+  .dot.off { background: #f97362; }
+
+  .counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .count {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 6px;
+    padding: 6px 8px; border: 1px solid #1d222a; border-radius: 6px; color: inherit;
+  }
+  .count:hover { border-color: #2c3443; text-decoration: none; }
+  .count .n { font-size: 18px; font-variant-numeric: tabular-nums; }
+  .count .l { color: #8b93a3; font-size: 11px; text-align: right; }
+
+  .section h2 {
+    margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: #8b93a3;
+  }
+  .section.grow { flex: 1 1 auto; min-height: 0; }
+  ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  #attention li, #open li { font-size: 12.5px; line-height: 1.35; }
+  #attention .flags { display: block; color: #ffb86b; font-size: 11px; }
+  #open li a { display: block; color: #e6e9ef; }
+  #open .owner { color: #8b93a3; font-size: 11px; }
+  .empty { color: #6b7280; font-size: 12px; }
+
+  .nav { display: flex; gap: 12px; border-top: 1px solid #20242c; padding-top: 10px; font-size: 12px; }
+
+  #pane { overflow-y: auto; padding: 22px 26px 60px; }
+  .pane-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .pane-head h1 { font-size: 19px; margin: 0; font-weight: 600; }
+
+  .pill {
+    display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px;
+    letter-spacing: 0.02em; white-space: nowrap; border: 1px solid transparent;
+  }
+  .s-received { background: #1e2733; color: #91b7e6; border-color: #2b3d52; }
+  .s-in_progress { background: #16301f; color: #6ee7a0; border-color: #245c3a; }
+  .s-paused { background: #332b16; color: #f2c46b; border-color: #5a4a1f; }
+  .s-waiting { background: #2b1f36; color: #d2a8ff; border-color: #4b3462; }
+  .s-completed { background: #1b2530; color: #8ba3bd; border-color: #2a3a4a; }
+  .s-refused { background: #321c1c; color: #ff9b9b; border-color: #5b2a2a; }
+
+  .tag { display: inline-block; padding: 0 6px; border-radius: 4px; background: #1a1f27; border: 1px solid #262d38; font-size: 11px; color: #aab3c2; }
+  .tag.ok { color: #6ee7a0; border-color: #245c3a; }
+  .tag.warn { color: #ffb86b; border-color: #5a4a1f; }
+  .also { display: inline-block; margin-left: 6px; font-size: 11px; color: #8b93a3; white-space: nowrap; }
+  .derived { color: #6b7280; font-size: 11px; }
+  details.legend { font-size: 12px; }
+  details.legend summary { cursor: pointer; color: #8b93a3; }
+  details.legend ul { margin: 8px 0 6px; gap: 8px; }
+  details.legend code { background: #1a1f27; padding: 0 5px; border-radius: 4px; font-size: 11px; color: #d2a8ff; }
+
+  table.grid { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.grid th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+    color: #8b93a3; font-weight: 500; padding: 0 10px 8px; border-bottom: 1px solid #20242c;
+  }
+  table.grid td { padding: 6px 10px; border-bottom: 1px solid #171b21; vertical-align: top; }
+  table.grid tbody tr { cursor: pointer; }
+  table.grid tbody tr:hover { background: #141920; }
+  table.grid tr.declared td:nth-child(2) { font-style: italic; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .flags { color: #ffb86b; font-size: 12px; }
+
+  .meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  dl.facts { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 4px 14px; margin: 0 0 20px; font-size: 13px; }
+  dl.facts dt { color: #8b93a3; }
+  dl.facts dd { margin: 0; }
+
+  .body { max-width: 78ch; }
+  .body h1, .body h2, .body h3 { margin: 1.2em 0 0.4em; line-height: 1.25; }
+  .body p { margin: 0.6em 0; }
+  .body ul, .body ol { margin: 0.6em 0; padding-left: 1.4em; display: block; }
+  .body li { margin: 0.2em 0; }
+  .body blockquote { margin: 0.8em 0; padding-left: 12px; border-left: 2px solid #2a3341; color: #aab3c2; }
+  .body hr { border: 0; border-top: 1px solid #20242c; margin: 1.4em 0; }
+  .body code { background: #171c24; padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  pre.code {
+    background: #11161d; border: 1px solid #1d222a; border-radius: 8px;
+    padding: 12px 14px; overflow-x: auto; font-size: 12.5px; line-height: 1.45;
+  }
+  pre.code code { background: none; padding: 0; }
+
+  .filter {
+    width: 100%; padding: 8px 10px; margin-bottom: 14px; border-radius: 6px;
+    background: #11161d; border: 1px solid #232933; color: inherit; font: inherit;
+  }
+  .filter:focus { outline: 1px solid #2f5f9e; }
+  ul.tree { gap: 2px; font-size: 13px; }
+  ul.tree .dir { color: #8b93a3; }
+  .btn {
+    background: #1a212b; border: 1px solid #2a3341; color: #d8dbe2; border-radius: 6px;
+    padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  .btn:hover { border-color: #3a4760; }
+</style>
+</head>
+<body>
+<aside id="rail">
+  <div class="brand">
+    <strong>tatrs</strong>
+    <span class="muted"><i id="dot" class="dot"></i><span id="updated">connecting…</span></span>
+  </div>
+  <div class="derived" title="tatrs derives these states on read from STATUS, live leases, DEPENDS and reserved tags. Nothing is written to TASK.md.">derived · not stored</div>
+  <div id="counts" class="counts"></div>
+  <details class="legend">
+    <summary>what do these mean?</summary>
+    <ul id="legend-list"></ul>
+    <p class="empty">A task has exactly one state. Other conditions that also hold are shown as “also”.</p>
+  </details>
+  <div class="section">
+    <h2>attention</h2>
+    <ul id="attention"></ul>
+  </div>
+  <div class="section grow">
+    <h2>open work</h2>
+    <ul id="open"></ul>
+  </div>
+  <nav class="nav">
+    <a href="#/">board</a>
+    <a href="#/files">files</a>
+  </nav>
+</aside>
+<main id="pane"><div id="view" class="view"><p class="muted">loading…</p></div></main>
+
+<script>
+"use strict";
+
+const KEYS = [
+  ["received", "received"],
+  ["in_progress", "in progress"],
+  ["paused", "paused"],
+  ["waiting", "waiting"],
+  ["ready", "ready"],
+  ["attention", "attention"],
+  ["completed", "completed"],
+  ["refused", "refused"],
+];
+
+const OPEN_STATES = ["received", "in_progress", "paused", "waiting"];
+const TREE_LIMIT = 400;
+
+const HELP = {
+  received: "Open task; work has not started yet.",
+  in_progress: "Work is underway: a live lease is held, or the task is tagged wip.",
+  paused: "Stopped by decision: the paused tag is set. Usually resources or priorities.",
+  waiting: "Cannot proceed yet: a DEPENDS entry is still open, or the task is tagged blocked.",
+  completed: "Closed and not refused.",
+  refused: "Will not be done: the refused tag is set and the reason is in the body.",
+  ready: "Open, agent-tagged, acceptance satisfied: an agent could start now.",
+  attention: "Has at least one flag: unverified completion, stalled lease, needs-human, ...",
+};
+
+const FLAG_HELP = {
+  unverified: "Closed while ## Acceptance still has unchecked criteria.",
+  "notify-owner": "Closed and tagged notify: the owner still needs telling.",
+  stalled: "Live lease with no task change for longer than --stale (default 2h).",
+  "expired-claim": "A lease expired without being released; the task is stealable again.",
+  "needs-human": "Tagged needs-human: a decision is required, not more time.",
+  "paused-but-claimed": "Tagged paused while a live lease is held; clean one of them up.",
+  "claim-on-closed-task": "A lease exists for a task that is already closed.",
+};
+
+const LEGEND = ["received", "in_progress", "paused", "waiting", "completed", "refused", "ready", "attention"];
+
+const state = { board: null, tree: null, view: "", filter: null };
+
+const $ = (id) => document.getElementById(id);
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function label(value) {
+  return String(value).replace(/_/g, " ");
+}
+
+function pill(value, help = HELP[value] || "") {
+  return `<span class="pill s-${value}" title="${escapeHtml(help)}">${label(value)}</span>`;
+}
+
+function alsoPills(also) {
+  if (!also || also.length === 0) return "";
+  const text = also.map(label).join(" · ");
+  const help = "Also true: " + also.map((value) => `${label(value)} — ${HELP[value] || ""}`).join(" ");
+  return `<span class="also" title="${escapeHtml(help)}">also ${escapeHtml(text)}</span>`;
+}
+
+function buildLegend() {
+  $("legend-list").innerHTML = LEGEND.map((key) =>
+    `<li><code>${label(key)}</code> ${escapeHtml(HELP[key])}</li>`
+  ).join("");
+}
+
+function timeAgo(iso) {
+  if (!iso) return "—";
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return iso;
+  const seconds = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (seconds < 60) return seconds + "s ago";
+  if (seconds < 3600) return Math.round(seconds / 60) + "m ago";
+  if (seconds < 86400) return Math.round(seconds / 3600) + "h ago";
+  return Math.round(seconds / 86400) + "d ago";
+}
+
+/* ---------------------------------------------------------------- markdown */
+
+function inline(text) {
+  return text
+    .replace(/`([^`]+)`/g, (_, code) => `<code>${code}</code>`)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, href) => {
+      if (/^https?:/i.test(href)) {
+        return `<a href="${href}" target="_blank" rel="noreferrer">${text}</a>`;
+      }
+      return `<a href="#/file/${href.replace(/^\.\//, "")}">${text}</a>`;
+    });
+}
+
+function markdown(source) {
+  const lines = String(source || "").replace(/\r\n/g, "\n").split("\n");
+  const out = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (/^```/.test(line)) {
+      const lang = line.slice(3).trim();
+      const code = [];
+      i += 1;
+      while (i < lines.length && !/^```/.test(lines[i])) {
+        code.push(lines[i]);
+        i += 1;
+      }
+      i += 1;
+      const hint = lang ? ` data-lang="${escapeHtml(lang)}"` : "";
+      out.push(`<pre class="code"${hint}><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+      continue;
+    }
+
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (heading) {
+      const level = heading[1].length;
+      out.push(`<h${level}>${inline(escapeHtml(heading[2]))}</h${level}>`);
+      i += 1;
+      continue;
+    }
+
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) {
+      out.push("<hr>");
+      i += 1;
+      continue;
+    }
+
+    if (/^\s*[-*+]\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) {
+        items.push(`<li>${inline(escapeHtml(lines[i].replace(/^\s*[-*+]\s+/, "")))}</li>`);
+        i += 1;
+      }
+      out.push(`<ul>${items.join("")}</ul>`);
+      continue;
+    }
+
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        items.push(`<li>${inline(escapeHtml(lines[i].replace(/^\s*\d+\.\s+/, "")))}</li>`);
+        i += 1;
+      }
+      out.push(`<ol>${items.join("")}</ol>`);
+      continue;
+    }
+
+    if (/^>\s?/.test(line)) {
+      const quote = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) {
+        quote.push(lines[i].replace(/^>\s?/, ""));
+        i += 1;
+      }
+      out.push(`<blockquote>${inline(escapeHtml(quote.join(" ")))}</blockquote>`);
+      continue;
+    }
+
+    if (line.trim() === "") {
+      i += 1;
+      continue;
+    }
+
+    const paragraph = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== "" &&
+      !/^(#{1,6}\s|```|>|\s*[-*+]\s|\s*\d+\.\s)/.test(lines[i])
+    ) {
+      paragraph.push(lines[i]);
+      i += 1;
+    }
+    out.push(`<p>${inline(escapeHtml(paragraph.join(" ")))}</p>`);
+  }
+
+  return out.join("\n");
+}
+
+/* -------------------------------------------------------------------- rail */
+
+function renderRail(board) {
+  state.board = board;
+  const counts = $("counts");
+
+  if (!counts.dataset.built) {
+    counts.innerHTML = KEYS.map(([key, text]) =>
+      `<a class="count" data-k="${key}" href="#/tasks/${key}" title="${escapeHtml(HELP[key] || "")}"><span class="n">0</span><span class="l">${text}</span></a>`
+    ).join("");
+    counts.dataset.built = "1";
+  }
+
+  for (const [key] of KEYS) {
+    const node = counts.querySelector(`[data-k="${key}"] .n`);
+    if (node) node.textContent = String(board.counts[key] ?? 0);
+  }
+
+  const attention = board.tasks.filter((task) => task.flags.length > 0);
+  const attentionSignature = attention.map((task) => task.id + ":" + task.flags.join(",")).join("|");
+  const attentionList = $("attention");
+  if (attentionList.dataset.sig !== attentionSignature) {
+    attentionList.dataset.sig = attentionSignature;
+    attentionList.innerHTML = attention.length === 0
+      ? '<li class="empty">No action needed</li>'
+      : attention.slice(0, 8).map((task) =>
+          `<li><a href="#/task/${task.id}">${escapeHtml(task.title)}</a>` +
+          `<span class="flags" title="${escapeHtml(task.flags.map((flag) => FLAG_HELP[flag] || flag).join(" "))}">${task.flags.join(" · ")}</span></li>`
+        ).join("");
+  }
+
+  const open = board.tasks.filter((task) => OPEN_STATES.includes(task.state));
+  const openSignature = open.map((task) => task.id + ":" + task.state + ":" + (task.owner || "")).join("|");
+  const openList = $("open");
+  if (openList.dataset.sig !== openSignature) {
+    openList.dataset.sig = openSignature;
+    const shown = open.slice(0, 10).map((task) =>
+      `<li><a href="#/task/${task.id}">${pill(task.state)} ${escapeHtml(task.title)}</a>` +
+      (task.owner ? `<span class="owner">${escapeHtml(task.owner)}</span>` : "") +
+      "</li>"
+    );
+    if (open.length > 10) shown.push(`<li class="empty">+${open.length - 10} more</li>`);
+    openList.innerHTML = shown.join("") || '<li class="empty">no open work</li>';
+  }
+
+  $("updated").textContent = "updated " + timeAgo(board.generated_at);
+  $("dot").className = "dot on";
+}
+
+/* ------------------------------------------------------------------ views */
+
+function filterTasks(tasks, filter) {
+  if (!filter) return tasks;
+  if (filter === "attention") return tasks.filter((task) => task.flags && task.flags.length > 0);
+  if (filter === "ready") return tasks.filter((task) => task.ready);
+  return tasks.filter((task) => task.state === filter);
+}
+
+function row(task) {
+  return `<tr class="${task.declared ? "declared" : ""}" onclick="location.hash='#/task/${task.id}'">` +
+    `<td>${pill(task.state)}${alsoPills(task.also)}</td>` +
+    `<td class="mono muted">${task.id}</td>` +
+    `<td class="num">${task.priority}</td>` +
+    `<td>${escapeHtml(task.title)}</td>` +
+    `<td class="mono muted">${task.owner ? escapeHtml(task.owner) : ""}</td>` +
+    `<td class="flags">${task.flags.join(" · ")}</td>` +
+    "</tr>";
+}
+
+function showBoard(filter) {
+  state.view = "board";
+  state.filter = filter || null;
+  const board = state.board;
+  if (!board) {
+    $("view").innerHTML = '<p class="muted">waiting for the first snapshot…</p>';
+    return;
+  }
+  const tasks = filterTasks(board.tasks, filter);
+  $("view").innerHTML = `
+    <header class="pane-head">
+      <h1>${filter ? escapeHtml(label(filter)) : "board"}</h1>
+      <span class="muted">${tasks.length} task${tasks.length === 1 ? "" : "s"} · v${board.version}</span>
+    </header>
+    <table class="grid">
+      <thead><tr><th>state</th><th>id</th><th>prio</th><th>title</th><th>owner</th><th>flags</th></tr></thead>
+      <tbody>${tasks.map(row).join("")}</tbody>
+    </table>`;
+}
+
+async function showTask(id) {
+  state.view = "task";
+  state.filter = null;
+  $("view").innerHTML = '<p class="muted">loading…</p>';
+  try {
+    const response = await fetch("/api/task/" + encodeURIComponent(id));
+    if (!response.ok) throw new Error((await response.text()).trim() || response.statusText);
+    const task = await response.json();
+    const lc = task.lifecycle || {};
+    const acceptance = task.acceptance || {};
+    $("view").innerHTML = `
+      <header class="pane-head">
+        <h1>${escapeHtml(task.title)}</h1>
+        <span class="mono muted">${task.id}</span>
+      </header>
+      <div class="meta">
+        ${lc.state ? pill(lc.state) : ""}
+        ${alsoPills(lc.also)}
+        ${lc.declared ? '<span class="tag">declared</span>' : '<span class="tag">observed</span>'}
+        ${lc.ready ? '<span class="tag ok">dispatchable</span>' : ""}
+        ${(lc.flags || []).map((flag) => `<span class="tag warn" title="${escapeHtml(FLAG_HELP[flag] || "")}">${escapeHtml(flag)}</span>`).join("")}
+      </div>
+      <dl class="facts">
+        <dt>owner</dt><dd>${lc.owner ? escapeHtml(lc.owner) : "—"}</dd>
+        <dt>run</dt><dd>${lc.run ? escapeHtml(lc.run) : "—"}</dd>
+        <dt>since</dt><dd>${lc.since ? escapeHtml(lc.since) : "—"}</dd>
+        <dt>priority</dt><dd>${task.priority}</dd>
+        <dt>tags</dt><dd>${task.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join(" ") || "—"}</dd>
+        <dt>acceptance</dt><dd>${acceptance.present
+          ? `${acceptance.checked ?? 0}/${acceptance.criteria} checked${acceptance.waived ? " · waived" : ""}`
+          : "no section"}${acceptance.ready ? ' <span class="tag ok">ready</span>' : ""}</dd>
+        <dt>file</dt><dd><a class="mono" href="#/file/${task.path}">${escapeHtml(task.path)}</a></dd>
+      </dl>
+      <div class="body">${markdown(task.body || "")}</div>`;
+  } catch (err) {
+    $("view").innerHTML = `<p class="error">${escapeHtml(String(err))}</p>`;
+  }
+}
+
+async function showFiles() {
+  state.view = "files";
+  state.filter = null;
+  if (state.tree) return renderFiles("");
+  $("view").innerHTML = '<p class="muted">loading…</p>';
+  try {
+    const response = await fetch("/api/tree");
+    if (!response.ok) throw new Error((await response.text()).trim() || response.statusText);
+    const payload = await response.json();
+    state.tree = payload.entries || [];
+    renderFiles("");
+  } catch (err) {
+    $("view").innerHTML = `<p class="error">${escapeHtml(String(err))}</p>`;
+  }
+}
+
+function renderFiles(filter) {
+  const all = state.tree || [];
+  $("view").innerHTML = `
+    <header class="pane-head">
+      <h1>files</h1>
+      <span class="muted"><span id="tree-count">${all.length}</span> entries</span>
+    </header>
+    <input id="tree-filter" class="filter" placeholder="filter paths" value="${escapeHtml(filter)}">
+    <ul id="tree-list" class="tree"></ul>`;
+  const input = $("tree-filter");
+  const paint = () => {
+    const needle = input.value.toLowerCase();
+    const matches = needle ? all.filter((entry) => entry.path.toLowerCase().includes(needle)) : all;
+    $("tree-count").textContent = String(matches.length);
+    $("tree-list").innerHTML = matches.slice(0, TREE_LIMIT).map((entry) =>
+      entry.dir
+        ? `<li class="dir mono">${escapeHtml(entry.path)}/</li>`
+        : `<li><a class="mono" href="#/file/${encodeURI(entry.path)}">${escapeHtml(entry.path)}</a></li>`
+    ).join("") + (matches.length > TREE_LIMIT ? `<li class="empty">… ${matches.length - TREE_LIMIT} more</li>` : "");
+  };
+  input.addEventListener("input", paint);
+  paint();
+}
+
+async function showFile(path) {
+  state.view = "file";
+  state.filter = null;
+  $("view").innerHTML = '<p class="muted">loading…</p>';
+  try {
+    const response = await fetch("/api/file?path=" + encodeURIComponent(path));
+    if (!response.ok) throw new Error((await response.text()).trim() || response.statusText);
+    const text = await response.text();
+    const isMarkdown = /\.(md|markdown)$/i.test(path);
+    const rendered = isMarkdown ? markdown(text) : "";
+    $("view").innerHTML = `
+      <header class="pane-head">
+        <h1 class="mono">${escapeHtml(path)}</h1>
+        <span class="muted">${text.split("\n").length} lines</span>
+        ${isMarkdown ? '<button id="toggle" class="btn">raw</button>' : ""}
+      </header>
+      <div id="file-body" class="body">${isMarkdown
+        ? rendered
+        : `<pre class="code"><code>${escapeHtml(text)}</code></pre>`}</div>`;
+    const toggle = $("toggle");
+    if (toggle) {
+      let mode = "rendered";
+      toggle.addEventListener("click", () => {
+        mode = mode === "rendered" ? "raw" : "rendered";
+        toggle.textContent = mode === "rendered" ? "raw" : "rendered";
+        $("file-body").innerHTML = mode === "rendered"
+          ? rendered
+          : `<pre class="code"><code>${escapeHtml(text)}</code></pre>`;
+      });
+    }
+  } catch (err) {
+    $("view").innerHTML = `<p class="error">${escapeHtml(String(err))}</p>`;
+  }
+}
+
+/* ----------------------------------------------------------------- router */
+
+function route() {
+  const hash = location.hash.slice(1) || "/";
+  const parts = hash.split("/").filter(Boolean).map((part) => {
+    try {
+      return decodeURIComponent(part);
+    } catch (err) {
+      return part;
+    }
+  });
+  const [kind, ...rest] = parts;
+
+  if (kind === "task") return showTask(rest.join("/"));
+  if (kind === "file") return showFile(rest.join("/"));
+  if (kind === "files") return showFiles();
+  if (kind === "tasks") return showBoard(rest[0] || null);
+  return showBoard(null);
+}
+
+/* -------------------------------------------------------------------- live */
+
+function connect() {
+  const source = new EventSource("/events");
+  source.addEventListener("board", (event) => {
+    let board;
+    try {
+      board = JSON.parse(event.data);
+    } catch (err) {
+      return;
+    }
+    renderRail(board);
+    if (state.view === "board") showBoard(state.filter);
+    if (state.view === "files") state.tree = null;
+  });
+  source.onopen = () => {
+    $("dot").className = "dot on";
+  };
+  source.onerror = () => {
+    $("dot").className = "dot off";
+    $("updated").textContent = "reconnecting…";
+  };
+}
+
+window.addEventListener("hashchange", route);
+setInterval(() => {
+  if (state.board) $("updated").textContent = "updated " + timeAgo(state.board.generated_at);
+}, 5000);
+
+route();
+buildLegend();
+connect();
+</script>
+</body>
+</html>

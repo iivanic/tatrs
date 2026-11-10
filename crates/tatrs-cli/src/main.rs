@@ -1,4 +1,5 @@
 mod args;
+mod board;
 mod cmd;
 mod error;
 mod output;

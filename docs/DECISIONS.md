@@ -8,6 +8,8 @@ options, the choice, the exact behaviour that follows, and what would make us re
 | D-001 | Acceptance enforcement level | accepted | 2026-11-09 |
 | D-002 | Claim storage and lifecycle | accepted | 2026-11-09 |
 | D-003 | Claim visibility: status command, no published claims | accepted | 2026-11-09 |
+| D-004 | Supervisor states: derive, do not extend `STATUS` | accepted | 2026-11-10 |
+| D-005 | Live board transport: SSE + sweep, loopback only | accepted | 2026-11-10 |
 
 ---
 
@@ -72,8 +74,8 @@ regardless of `check` settings. Authoring stays cheap; dispatch is strict.
    rule existed and makes `check` unusable on old trees.
 5. **`new` warns, never blocks.** Creating an `agent` task without criteria prints a one-line
    stderr warning: it will not appear in `ready`. Creation stays a cheap capture operation.
-6. **`ready` filter** (M2): `OPEN`, tag `agent`, valid acceptance or waiver, not `wip`/`blocked`,
-   all `DEPENDS` CLOSED, no unexpired claim.
+6. **`ready` filter** (M2): `OPEN`, tag `agent`, valid acceptance or waiver, not `wip`/`blocked`
+   (`paused` was added later, see D-004), all `DEPENDS` CLOSED, no unexpired claim.
 7. **`claim` on a non-ready task** exits `3` (invalid data) with a diagnostic naming the failed
    condition, so an orchestrator can branch without parsing prose.
 8. **JSON:** task objects gain an additive `acceptance` object —
@@ -308,7 +310,8 @@ must say so.
   that outlives a crash becomes a permanent lie in the task file.
 - **Claim state in PR comments / CI artifacts** — external systems, extra auth, and it still goes
   stale.
-- **A local web UI** — out of scope; `--json` covers dashboards built elsewhere.
+- **A local web UI** — out of scope here; D-005 later added a read-only board that renders leases
+  without publishing them, so this rejection covers only *writing* claim state into the task.
 
 ### Revisit if
 
@@ -316,3 +319,156 @@ must say so.
   artifact or PR check summary — not as committed task data.
 - `status` listings grow beyond a screen; then add `--limit` and a `--since` filter rather than a
   new store.
+
+---
+
+## D-004: where do supervisor-facing states live?
+
+### Context
+
+A human supervising parallel agent work does not need `tasks/<HUID>/TASK.md`; they need to know
+*what is happening*: received, in progress, paused, waiting, completed, refused. Today that has to be
+reconstructed from `STATUS`, tags, leases, and `DEPENDS`.
+
+Two of those six are **decisions** that no observation can recover — "we paused this" and "we refuse
+to do this". The rest are observable: a task exists, a lease is held, a dependency is open, a task is
+closed. `STATUS` is binary and is part of the compatibility contract (`docs/FORMAT.md` §3.2, §6):
+upstream knows two values, `E0102` rejects anything else, and every consumer filters on `OPEN` /
+`CLOSED`.
+
+### Options
+
+| Option | Where state lives | Upstream compatibility | Staleness | Cost |
+|-|-|-|-|-|
+| A. Extend `STATUS` to six values | one field in `TASK.md` | **breaks**: new enum, `E0102` rewrite, query semantics change | every transition is a commit | migration, doc rewrite, every filter and the MCP contract |
+| B. Derive everything | nowhere | none | impossible | cannot express `paused` or `refused` |
+| C. One `STATE` property | unknown property, preserved by upstream | medium: a second dialect; tools must learn it | two sources of truth beside `wip`/`blocked` | validation rules, precedence rules |
+| D. **Derive observed, declare decisions with reserved tags** | tags, already free-form | none | impossible for observed states | a convention, documented once |
+
+Option A is the intuitive answer and the wrong one. It makes `STATUS: PAUSED` a *durable fact about
+a moment*, so a worker that pauses and disappears leaves a lie in git; it changes what `status eq
+OPEN` means for every existing script; and it turns "started work" into a file write, which is
+exactly the churn D-002 rejected for leases.
+
+Option B is clean but incomplete: a pause is a human choice, not an absence of evidence. A task with
+no lease is indistinguishable from one whose worker died.
+
+Option C is the closest competitor. It has one advantage — a single validated field that can carry a
+reason — but it introduces a second lifecycle vocabulary next to the tags the project already
+reserved, and `STATE: WIP` would contradict the `wip` tag. Tags are where `docs/FORMAT.md` §6 already
+put lifecycle, and unknown tags are already preserved by both tools.
+
+### Decision
+
+**Adopt D.** Nothing new is persisted beyond three reserved tags. `tatrs-core::lifecycle` is the only
+place the mapping lives, and it is pure: the caller supplies the clock, the lease, and the last file
+change.
+
+### Exact behaviour
+
+1. **Precedence** is normative in `docs/DASHBOARD.md` §2: `CLOSED` → `in_progress` (live lease, else
+   `wip`) → `paused` → `waiting` → `received`. A live lease beats a declared pause; the conflict is
+   reported as `paused-but-claimed`, never silently resolved.
+2. **`STATUS` is unchanged.** `OPEN`/`CLOSED`, `E0102`, `render`, the upstream corpus, and every TQL
+   query behave exactly as before.
+3. **New reserved tags:** `paused`, `refused`, `notify` (`docs/FORMAT.md` §6). They are ordinary
+   tags: preserved through rewrites, invisible to upstream, greppable, and reviewable.
+4. **Dispatch excludes `paused`.** `ready`/`claim` already refused `wip` and `blocked`; a paused task
+   is not dispatchable either, even if a stale `agent` tag and acceptance criteria are present.
+5. **`refused` requires a reason.** The tag closes the task; the reason is prose in the body, where a
+   reviewer sees it. `check` does not enforce a reason — the task is already closed and history
+   should not be relitigated.
+6. **Flags are data, not warnings.** `unverified`, `notify-owner`, `stalled`, `expired-claim`,
+   `needs-human`, `paused-but-claimed`, `claim-on-closed-task` are computed per task and exposed in
+   JSON. No new diagnostic code is emitted, so `check` output is unchanged.
+7. **Additive JSON only.** `summary --json` gains `lifecycle`; the task object gains
+   `acceptance.checked`. `schema` stays `1`.
+8. **No transition command.** There is no `tatrs pause` in this decision. Pausing is `+paused` through
+   the existing update language, which keeps one write path.
+
+### Consequences
+
+**Positive.** Adoption is free: an untouched tree gains a derived view without a single file change.
+The board cannot disagree with the files, cannot show a state that was never written, and cannot
+leave a stale `PAUSED` after a crash. Refusals and pauses remain reviewable in normal diffs.
+
+**Negative.** Two of six states depend on people or agents remembering a tag. A worker that stops
+without tagging `paused` looks `received` or `stalled`; the `stalled` flag exists to surface that, but
+it needs a lease to compare against. `notify` is a convention with no enforcement, so "completed but
+not notified" is only visible if the tag was applied.
+
+**Mitigations.** `unverified` catches the most common false completion (criteria left unchecked);
+`stalled` catches silent workers; `needs-human` is already reserved and now surfaces as a flag.
+
+### Revisit if
+
+- Tasks routinely need a *reason* attached to `paused`/`refused` in machine-readable form; then
+  promote to a `STATE` property (option C) and treat the tags as aliases during migration.
+- Most `refused` tasks end up lacking a reason, making the state meaningless; then require a
+  `## Reason` heading for closed-by-refusal tasks and emit a diagnostic.
+- A team needs states beyond these six; derive them as flags first (cheap, reversible) before adding
+  any stored vocabulary.
+
+---
+
+## D-005: how does the live board stay current?
+
+### Context
+
+The board has one writer path (`tasks/` plus the local claim store) and one direction of data (server
+to browser). It must stay responsive while the human reads code or Markdown in the same page, and it
+must not add a dependency for a feature that is essentially a local file view.
+
+### Options
+
+| Concern | Options | Trade-off |
+|-|-|-|
+| Push transport | WebSocket | bidirectional, needs a dependency and frame/handshake parsing |
+| | **SSE (`text/event-stream`)** | one direction, plain HTTP, automatic reconnect, ~50 lines on `std` |
+| | Page polling | simplest, but every client polls and `tatrs` cannot signal change |
+| Change detection | inotify/FSEvents (`notify`) | instant, but platform-specific runtime and event coalescing |
+| | **`stat` sweep with incremental parse** | portable, catches other worktrees and NFS, idle cost is one `stat`/file/tick |
+| Serving UI | external build step | asset pipeline and a second toolchain |
+| | **`include_str!` single file** | no build step, no dependency, one request |
+
+### Decision
+
+**SSE + sweep + embedded HTML.** The watcher thread recomputes only when a `(len, mtime)` changed;
+the result is serialized once, versioned, and published to every subscriber through a `Condvar`.
+
+### Exact behaviour
+
+- **Default bind** `127.0.0.1:7787` (`--port 0` picks a free port). Any non-loopback address is
+  refused unless `--allow-remote` is passed.
+- **Token.** A per-session capability token is printed in the URL (`/?t=…`); `/` sets it as an
+  `HttpOnly; SameSite=Strict` cookie so `EventSource` and `fetch` authenticate. Requests without it
+  get `401`.
+- **Sweep** every `--poll` (default `1s`, `ms` suffix accepted). Per tick: `read_dir` + `stat` of each
+  `TASK.md` and claim file; parse only changed files. Removed files are dropped from the cache.
+- **Snapshot** is bumped on every rebuild and broadcast as one `board` event:
+  `{"schema":1,"version":n,"generated_at":…,"counts":{…},"tasks":[…]}`. Bodies are excluded; task
+  detail is fetched separately.
+- **Keepalive** comment every 15 seconds so idle proxies do not close the stream.
+- **Staleness** of a live lease is `--stale` (default `2h`) since the last file change, not since the
+  claim began: an agent that keeps editing is not stalled.
+- **Browsing** is off with `--no-browse`; otherwise `/api/tree` and `/api/file` serve only paths under
+  the canonical root, never `.git`/`target`/`node_modules`/`.venv`/`dist`/`build`/`.tatrs`, never
+  files above `--max-file` KiB, and never non-UTF-8 content.
+- **Read-only.** There are no mutating routes, so `--read-only` is trivially satisfied.
+
+### Scale
+
+At 1 000 tasks a sweep is a few milliseconds and a change re-parses one file; snapshots are ~150 KB
+and are sent only when something changed. At 2 000 tasks the same holds at roughly double the cost
+(`docs/DASHBOARD.md` §5). The sweep is the floor: one `stat` per file per tick, whether or not
+anything changed.
+
+### Revisit if
+
+- A tree passes ~10 000 tasks or several clients watch it: send per-entry deltas instead of full
+  snapshots, and consider raising the default `--poll`.
+- `stat` sweeps prove unreliable on a network filesystem: add a checksum of the task file, or fall
+  back to `notify` behind a feature flag.
+- The board needs actions (close, claim): keep them out of the HTTP surface and route them through
+  the CLI/MCP so the write path stays audited.
+

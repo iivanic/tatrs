@@ -90,6 +90,9 @@ pub enum Command {
     /// Serve the Model Context Protocol over stdio
     Mcp(McpArgs),
 
+    /// Serve a live task board over HTTP (read-only, loopback by default)
+    Serve(ServeArgs),
+
     /// Validate the tasks/ database
     Check(CheckArgs),
 
@@ -331,6 +334,37 @@ pub struct McpArgs {
     /// Expose mutating tools (create_task, claim_task, release_task)
     #[arg(long)]
     pub allow_write: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ServeArgs {
+    /// Address to bind; anything but loopback needs --allow-remote
+    #[arg(long, default_value = "127.0.0.1", value_name = "ADDR")]
+    pub bind: String,
+
+    /// Port to listen on (0 picks a free one)
+    #[arg(long, default_value_t = 7787, value_name = "PORT")]
+    pub port: u16,
+
+    /// Filesystem sweep interval: 250ms, 1s, 5s
+    #[arg(long, default_value = "1s", value_name = "DURATION")]
+    pub poll: String,
+
+    /// Report a live claim as stalled after this long with no task change
+    #[arg(long, default_value = "2h", value_name = "DURATION")]
+    pub stale: String,
+
+    /// Do not serve repository files
+    #[arg(long)]
+    pub no_browse: bool,
+
+    /// Largest file served, in KiB
+    #[arg(long, default_value_t = 2048, value_name = "KIB")]
+    pub max_file: u64,
+
+    /// Allow binding a non-loopback address, exposing the board to the network
+    #[arg(long)]
+    pub allow_remote: bool,
 }
 
 #[derive(Debug, Clone, Args)]

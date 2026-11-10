@@ -151,11 +151,19 @@ Tags are free-form, but these are reserved by convention so tools can rely on th
 | `wip` | claimed, do not start redundantly |
 | `blocked` | waiting on a human or an external event |
 | `needs-human` | requires a decision, not just time |
+| `paused` | work stopped by decision; derived state `Paused` |
+| `refused` | closed without being done; the reason belongs in the body |
+| `notify` | after completion the owner still needs to be told |
 
-`STATUS` stays binary (`OPEN`/`CLOSED`); lifecycle belongs in tags. `OWNER` records durable
-accountability, not a lease: active claims are ephemeral runtime state and never enter `TASK.md`
-(see `docs/DECISIONS.md` D-002). `ACCEPTANCE: waived` opts a task out of the acceptance rule
-(D-001).
+`STATUS` stays binary (`OPEN`/`CLOSED`); lifecycle belongs in tags. Tools that need the
+supervisor-facing states (`Received`, `In Progress`, `Paused`, `Waiting`, `Completed`, `Refused`)
+**derive** them from `STATUS`, live leases, `DEPENDS`, and the reserved tags above. Derived state is
+never written to `TASK.md`, so it cannot go stale and never dirties a diff; the precedence table and
+the meaning of each tag are normative in `docs/DASHBOARD.md`.
+
+`OWNER` records durable accountability, not a lease: active claims are ephemeral runtime state and
+never enter `TASK.md` (see `docs/DECISIONS.md` D-002). `ACCEPTANCE: waived` opts a task out of the
+acceptance rule (D-001).
 
 ## 7. Diagnostics
 
