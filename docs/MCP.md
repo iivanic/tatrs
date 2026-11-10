@@ -6,27 +6,33 @@ compiler-style output.
 
 ## Configure
 
-Claude Code / any MCP client that launches a stdio server:
+Start read-only; add `--allow-write` when the agent should create, claim, or close tasks.
+
+Read-only:
 
 ```json
-{
-  "mcpServers": {
-    "tatrs": {
-      "command": "tatrs",
-      "args": ["mcp", "--allow-write"]
-    }
-  }
-}
+{"mcpServers": {"tatrs": {"command": "tatrs", "args": ["mcp"]}}}
 ```
 
-Drop `--allow-write` for a read-only server. Use `--cwd /path/to/repo` (before or after `mcp`) if the
-client does not start the server in the project directory. `--read-only` also forces a read-only
-server, even if `--allow-write` is present.
+Write:
+
+```json
+{"mcpServers": {"tatrs": {"command": "tatrs", "args": ["mcp", "--allow-write"]}}}
+```
+
+VS Code (`.vscode/mcp.json`) names the map `servers` and the transport explicitly:
+
+```json
+{"servers": {"tatrs": {"type": "stdio", "command": "tatrs", "args": ["mcp"]}}}
+```
+
+Use `--cwd /path/to/repo` (before or after `mcp`) if the client does not start the server in the
+project directory. `--read-only` also forces a read-only server, even if `--allow-write` is present.
 
 ## Tools
 
 | Tool | Access | Arguments |
-|-|-|-|
+| - | - | - |
 | `list_tasks` | read | `status` (`open`/`closed`/`all`), `tag`, `query` (TQL), `limit` |
 | `get_task` | read | `id` |
 | `create_task` | write | `title`, `tags`, `priority`, `body`, `suffix`, `id` |

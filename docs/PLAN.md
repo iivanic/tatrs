@@ -4,7 +4,7 @@ Companion to `docs/CONCLUSION.md`. This is the working plan; update it when a de
 
 ## 1. Repository layout
 
-```
+```text
 tatrs/
 +- Cargo.toml              # workspace
 +- rust-toolchain.toml     # pinned stable
@@ -44,7 +44,7 @@ stays clean-room; the upstream corpus is used only as an external compatibility 
 `tatrs-core` is pure: it never prints, never reads stdin, never decides exit codes.
 
 | Module | Responsibility |
-|-|-|
+| - | - |
 | `huid` | parse/validate/format `YYYYMMDD-HHMMSS[-suffix]`, UTC from `SystemTime` (civil-date math, no time crate) |
 | `props` | ordered property list, duplicate handling, alnum-key rule, unknown-value preservation |
 | `task` | `TASK.md` parse + canonical render; title, status, priority, tags, body |
@@ -79,8 +79,8 @@ Normative grammar lives in `docs/FORMAT.md`. Decisions that differ from, or clar
    shows them (no silent coercion).
 7. **Tags** split on commas and whitespace; empty segments dropped; square brackets allowed but a
    `check` warning (they break TQL).
-8. **HUIDs** must be UTC; a task directory name that is not a valid HUID is an error in `check` and a
-   warning+skip in `--lenient` mode.
+8. **HUIDs** must be UTC; a task directory name that is not a valid HUID is an error in `check`
+   and a warning+skip in `--lenient` mode.
 9. **Line endings:** CRLF tolerated on read, always written as LF.
 10. **Encoding:** UTF-8; invalid UTF-8 in `TASK.md` is an error (upstream would pass bytes through).
 
@@ -90,7 +90,7 @@ Global: `--json`, `--porcelain`, `--quiet`, `--no-color`, `--cwd <path>`, `--len
 `--read-only`, `-v/--verbose`.
 
 | Command | Purpose | Key flags |
-|-|-|-|
+| - | - | - |
 | `init` | create `tasks/`, `tasks/tags`, `.gitignore` hint | `--no-readme` |
 | `new` | create task | `-t/--tag`, `-p/--priority`, `-s/--suffix`, `--id <HUID>`, `--body`, `--body-file`, `--acceptance`, `--print-id`, `--json`, `-y`, `--dry-run` |
 | `ls` | list/update tasks | `-a`, `--closed`, `--all`, `--sort id\|priority\|updated`, `-u/--update <ops>`, `--fail-if-empty` |
@@ -146,6 +146,7 @@ unless `--fail-if-empty`, which returns `5`.
 ## 6. Milestones
 
 ### M0 — bootstrap (done 2026-11-09)
+
 Workspace, toolchain pin, docs (`CONCLUSION`, `PLAN`, `FORMAT`, `JSON`), `AGENTS.md`, `tatrs-core`
 with HUID + task parse/render/validation + store, `tatrs-cli` with `init`, `new`, `ls`, `show`,
 `check`, `version`, JSON/porcelain output, exit-code contract.
@@ -153,6 +154,7 @@ with HUID + task parse/render/validation + store, `tatrs-cli` with `init`, `new`
 (94/94 upstream tasks, 0 errors).
 
 ### M1 — format parity
+
 Full TQL, update language, `summary`, `find`, `id`, `ref`, `todo` (non-interactive), `--porcelain`,
 compat corpus test against `reference/tatr/tasks` (read-only, `.git` excluded), `docs/FORMAT.md`
 frozen with tests for every quirk.
@@ -165,6 +167,7 @@ read commands (`find`, `id`, `ref`, `summary`, `todo`), and a corpus round-trip 
 all 94 upstream tasks parse and render back byte-identically (LF-normalized).
 
 ### M2 — agent surface
+
 `check --fix`, `ready`, `claim`/`release`, `--read-only`, non-TTY safety, structured diagnostics,
 shell completions, man page, `tatrs-mcp` read-only tools.
 **Done 2026-11-09.** Acceptance severity matrix (D-001); `ready` with `--explain`; `claim`,
@@ -176,6 +179,7 @@ read-only defaults, `--allow-write`, and `update_task`; shell completions and ma
 JSON, with no prompts. `scripts/agent-flow.ps1` covers this path.
 
 ### M3 — distribution
+
 Static builds for `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`;
 GitHub Actions matrix; `cargo install` instructions; `--version` includes commit; Docker image for
 agent sandboxes.
@@ -186,11 +190,13 @@ executed; the container image was built and exercised against a mounted reposito
 are documented in the README and `docs/RELEASING.md`.
 
 ### M4 — upstream and ecosystem
+
 PR the low-risk fixes to `tsoding/tatr` (`-y` on `todo`, `--json`, atomic writes), publish
 `docs/FORMAT.md` as a standalone spec, provide a `tatr` → `tatrs` migration note, and an
 `emacs`/`vim` quickstart snippet.
 
 ### M5 — supervision (in progress)
+
 A human supervising parallel agent work needs one screen that answers "where is everything, and
 what needs me?". `tatrs` answers it by **deriving** six lifecycle states instead of extending
 `STATUS` (`docs/DECISIONS.md` D-004), and `tatrs serve` publishes them as a loopback-only, read-only
@@ -225,7 +231,7 @@ board and blocks path traversal, and the CLI integration tests cover both
 ## 8. Risks and mitigations
 
 | Risk | Mitigation |
-|-|-|
+| - | - |
 | Upstream format drifts during rewrite | pinned commit, corpus test, `docs/FORMAT.md` as the contract |
 | Clean-room claim challenged | no upstream code in tree, provenance note in `CONCLUSION.md`, review gate in `AGENTS.md` |
 | JSON schema churn | `"schema": 1`, additive-only changes, documented in `docs/JSON.md` |

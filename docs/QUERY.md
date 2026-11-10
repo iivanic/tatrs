@@ -12,7 +12,7 @@ $ tatrs ls -a -u close,-wip :scope
 
 ## Grammar
 
-```
+```text
 expr      ::= or
 or        ::= and *('or' and)
 and       ::= compare *('and' compare)
@@ -37,7 +37,7 @@ contain square brackets, and why `:` is enough to introduce a tag.
 ## Semantics
 
 | Expression | Value | Meaning |
-|-|-|-|
+| - | - | - |
 | `:tag` | boolean | the task's `TAGS` contains exactly `tag` |
 | `tagged` | boolean | the task has at least one tag |
 | `any` | boolean | always true |
@@ -97,7 +97,7 @@ $ tatrs ls -a -u open :scope     # reopen every scope task
 
 `-u/--update` applies a list of actions to every matched task:
 
-```
+```text
 update ::= action *( ("," | whitespace) action )
 action ::= 'open' | 'close' | '+' tag | '-' tag
 ```
@@ -132,7 +132,7 @@ JSON adds three fields to the usual list payload:
 ## Errors and exit codes
 
 | Situation | Exit | Output |
-|-|-|-|
+| - | - | - |
 | invalid query or update syntax | `2` | source, caret, message on stderr |
 | `--update` without a query | `2` | usage message |
 | `--update` under `--read-only` without `--dry-run` | `2` | usage message |

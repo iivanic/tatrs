@@ -74,7 +74,8 @@ Checklist for a command:
 
 ## Testing
 
-- Unit tests live next to the module; fixtures are files, not string literals, when they exceed ~10 lines.
+- Unit tests live next to the module; fixtures are files, not string literals, when they exceed
+  ~10 lines.
 - Property tests: random task → render → parse → same model; arbitrary bytes → parser never panics.
 - The upstream corpus test is read-only and skipped when `reference/tatr` is absent.
 - Concurrency tests spawn processes, not just threads, and run in `tempfile`-style scratch trees.
@@ -86,6 +87,9 @@ Checklist for a command:
   `path`, `line`, `code`, `severity`.
 - Public items get doc comments that state the invariant, not the mechanics.
 - Prefer small, total functions over flag-threading; `tatrs-core` must be usable without a CLI.
+- Markdown: `npx --yes markdownlint-cli2 "**/*.md"` must pass. `.markdownlint.json` allows 100
+  columns outside code and tables, `$` prompts in command blocks, and repeated ADR headings; table
+  delimiters are `compact`, so use `--fix` rather than hand-editing them.
 
 ## Dogfooding
 

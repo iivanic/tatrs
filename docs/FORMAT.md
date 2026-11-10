@@ -8,7 +8,7 @@ Keywords: MUST, MUST NOT, SHOULD are used in the RFC 2119 sense.
 
 ## 1. Layout
 
-```
+```text
 project/
 +- .git/
 +- tasks/
@@ -28,7 +28,7 @@ checkout behaves like the inner project.
 
 ## 2. Task identifiers (HUID)
 
-```
+```text
 huid    = date "-" time [ "-" suffix ]
 date    = 4DIGIT 2DIGIT 2DIGIT        ; YYYYMMDD, UTC
 time    = 2DIGIT 2DIGIT 2DIGIT        ; HHMMSS, UTC
@@ -44,7 +44,7 @@ suffix  = 1*( ALPHA / DIGIT / "-" )
 
 ## 3. `TASK.md`
 
-```
+```text
 TASK.md = title, blank-line, properties, body
 title   = "#" *space title-text newline
 property= "-" *space key ":" *space value newline
@@ -79,7 +79,7 @@ properties or body for that file.
 Because keys cannot contain separators, the agent-workflow properties are single tokens:
 
 | Key | Meaning |
-|-|-|
+| - | - |
 | `OWNER` | durable assignment: who is accountable for the task |
 | `AGENT` | agent/runtime name, e.g. `claude-code`, `dsh` |
 | `BRANCH` | branch or worktree the work is happening in |
@@ -146,7 +146,7 @@ missing and malformed lines; `tatrs` does not rewrite this file.
 Tags are free-form, but these are reserved by convention so tools can rely on them:
 
 | Tag | Meaning |
-|-|-|
+| - | - |
 | `agent` | task is intended to be executed by an agent |
 | `wip` | claimed, do not start redundantly |
 | `blocked` | waiting on a human or an external event |
@@ -170,7 +170,7 @@ acceptance rule (D-001).
 Codes are stable and part of the JSON API.
 
 | Code | Severity | Meaning |
-|-|-|-|
+| - | - | - |
 | `E0101` | error | title is missing `#` |
 | `E0102` | error | `STATUS` is not `OPEN` or `CLOSED` |
 | `W0101` | warning | duplicate property |

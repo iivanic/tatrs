@@ -4,7 +4,7 @@ Architecture decision records for questions the code cannot answer on its own. E
 options, the choice, the exact behaviour that follows, and what would make us revisit it.
 
 | ID | Decision | Status | Date |
-|-|-|-|-|
+| - | - | - | - |
 | D-001 | Acceptance enforcement level | accepted | 2026-11-09 |
 | D-002 | Claim storage and lifecycle | accepted | 2026-11-09 |
 | D-003 | Claim visibility: status command, no published claims | accepted | 2026-11-09 |
@@ -27,7 +27,7 @@ creation, at commit, or at dispatch. Those have different failure modes.
 ### Options
 
 | Option | Guarantee | Friction | Failure mode |
-|-|-|-|-|
+| - | - | - | - |
 | A. Warning always (today) | none; opt-in via `--strict` | none | teams never run `--strict`; no guarantee survives |
 | B. Error always for open tasks | strong | high | legacy trees turn red; quick capture is blocked; people write ritual `- [x] done` to silence it |
 | C. Error only for tasks tagged `agent` | exactly where machines act | none for human backlog | depends on the tag being the dispatch contract (it is, see below) |
@@ -50,7 +50,7 @@ different session, with less context.
 **Adopt E.** Severity is a function of the promise the task makes:
 
 | Task state | No `## Acceptance` | Section present, no criteria | Criteria present |
-|-|-|-|-|
+| - | - | - | - |
 | `CLOSED` | nothing | nothing | nothing |
 | `OPEN`, no `agent` tag | `W0301` warning | `W0304` warning | ok |
 | `OPEN`, `agent` tag | `E0301` **error** | `E0304` **error** | ok |
@@ -127,7 +127,7 @@ The topology matters more than the storage format:
 ### Options
 
 | Option | Visible across worktrees | Merge behaviour | History noise | Crash recovery | Complexity |
-|-|-|-|-|-|-|
+| - | - | - | - | - | - |
 | A. Properties in `TASK.md` | only after commit + pull | conflicts with body edits and other claims | one commit per claim/refresh/release | stale claim until someone commits a cleanup | low |
 | B. Per-task file `tasks/<HUID>/CLAIM` | no (per worktree) | none if ignored, conflicts if committed | none | file expires, needs GC | low |
 | C. One map file `tasks/.claims.json` | no (per worktree) | none if ignored | none | same | medium; single-writer contention |
@@ -153,9 +153,10 @@ survives `git clean` and branch switches.
 **Adopt D, with B as a fallback for non-git directories.** Claims are runtime state and never enter
 `TASK.md`. Durable accountability is a separate concept and stays in the task as `OWNER`.
 
-- **Location:** `<git-common-dir>/tatrs/claims/<HUID>.json`. Resolve `.git` by walking up; if it is a
-  file (linked worktree), read `gitdir:` and take its parent's parent as the common dir. Without git:
-  `<repo>/tasks/.tatrs/claims/<HUID>.json`, ignored by a generated `tasks/.gitignore`.
+- **Location:** `<git-common-dir>/tatrs/claims/<HUID>.json`. Resolve `.git` by walking up; if it
+  is a file (linked worktree), read `gitdir:` and take its parent's parent as the common dir.
+  Without git: `<repo>/tasks/.tatrs/claims/<HUID>.json`, ignored by a generated
+  `tasks/.gitignore`.
 - **One file per task**, created atomically (temp + rename), so no global lock is needed.
 
 ### Claim file
@@ -260,7 +261,7 @@ visibility mechanism. A reviewer who needs to know runs one command; nothing abo
 
 `tatrs claim --status` reads the claim store, never writes, and works under `--read-only`.
 
-```
+```console
 $ tatrs claim --status
 TASK                 OWNER     STATE    EXPIRES      HOST   RUN
 20261109-123637      agent-3   live     in 1h 12m    desk   dsh-42
@@ -287,6 +288,7 @@ TASK                 OWNER     STATE    EXPIRES      HOST   RUN
 ```
 
 `remaining_seconds` is negative once expired, so a consumer needs no clock of its own.
+
 - **Not part of status:** releasing, stealing, or extending a claim. Those require the token and stay
   with `claim`/`release`; `--status` is a read-only view.
 
@@ -339,7 +341,7 @@ upstream knows two values, `E0102` rejects anything else, and every consumer fil
 ### Options
 
 | Option | Where state lives | Upstream compatibility | Staleness | Cost |
-|-|-|-|-|-|
+| - | - | - | - | - |
 | A. Extend `STATUS` to six values | one field in `TASK.md` | **breaks**: new enum, `E0102` rewrite, query semantics change | every transition is a commit | migration, doc rewrite, every filter and the MCP contract |
 | B. Derive everything | nowhere | none | impossible | cannot express `paused` or `refused` |
 | C. One `STATE` property | unknown property, preserved by upstream | medium: a second dialect; tools must learn it | two sources of truth beside `wip`/`blocked` | validation rules, precedence rules |
@@ -375,9 +377,9 @@ change.
    tags: preserved through rewrites, invisible to upstream, greppable, and reviewable.
 4. **Dispatch excludes `paused`.** `ready`/`claim` already refused `wip` and `blocked`; a paused task
    is not dispatchable either, even if a stale `agent` tag and acceptance criteria are present.
-5. **`refused` requires a reason.** The tag closes the task; the reason is prose in the body, where a
-   reviewer sees it. `check` does not enforce a reason — the task is already closed and history
-   should not be relitigated.
+5. **`refused` requires a reason.** The tag closes the task; the reason is prose in the body,
+   where a reviewer sees it. `check` does not enforce a reason — the task is already closed and
+   history should not be relitigated.
 6. **Flags are data, not warnings.** `unverified`, `notify-owner`, `stalled`, `expired-claim`,
    `needs-human`, `paused-but-claimed`, `claim-on-closed-task` are computed per task and exposed in
    JSON. No new diagnostic code is emitted, so `check` output is unchanged.
@@ -422,7 +424,7 @@ must not add a dependency for a feature that is essentially a local file view.
 ### Options
 
 | Concern | Options | Trade-off |
-|-|-|-|
+| - | - | - |
 | Push transport | WebSocket | bidirectional, needs a dependency and frame/handshake parsing |
 | | **SSE (`text/event-stream`)** | one direction, plain HTTP, automatic reconnect, ~50 lines on `std` |
 | | Page polling | simplest, but every client polls and `tatrs` cannot signal change |
@@ -471,4 +473,3 @@ anything changed.
   back to `notify` behind a feature flag.
 - The board needs actions (close, claim): keep them out of the HTTP surface and route them through
   the CLI/MCP so the write path stays audited.
-

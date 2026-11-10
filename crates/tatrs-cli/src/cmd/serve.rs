@@ -179,6 +179,13 @@ fn epoch_secs(modified: Option<SystemTime>) -> Option<i64> {
     i64::try_from(secs).ok()
 }
 
+/// Sub-second revision token for `TASK.md`; the UI refetches a task view when
+/// this changes. Nanoseconds since the epoch fit in `u64` until the year 2554.
+fn epoch_nanos(modified: Option<SystemTime>) -> Option<u64> {
+    let nanos = modified?.duration_since(UNIX_EPOCH).ok()?.as_nanos();
+    u64::try_from(nanos).ok()
+}
+
 /// One row of the board. Bodies are intentionally absent: they are fetched per
 /// task so a snapshot stays small enough to broadcast.
 #[derive(Serialize)]
@@ -191,6 +198,9 @@ struct Entry {
     owner: Option<String>,
     run: Option<String>,
     since: Option<String>,
+    /// `TASK.md` modification time in nanoseconds; changes on every edit, so a
+    /// client can tell when its cached task view is stale.
+    rev: Option<u64>,
     flags: Vec<Flag>,
     ready: bool,
     priority: i64,
@@ -199,7 +209,7 @@ struct Entry {
 }
 
 impl Entry {
-    fn new(repo: &Repo, task: &Task, lifecycle: &Lifecycle) -> Self {
+    fn new(repo: &Repo, task: &Task, lifecycle: &Lifecycle, rev: Option<u64>) -> Self {
         Self {
             id: task.id.as_str().to_owned(),
             title: task.title.clone(),
@@ -209,6 +219,7 @@ impl Entry {
             owner: lifecycle.owner.clone(),
             run: lifecycle.run.clone(),
             since: lifecycle.since_iso(),
+            rev,
             flags: lifecycle.flags.clone(),
             ready: lifecycle.ready,
             priority: task.priority,
@@ -229,6 +240,7 @@ struct Watcher {
     claim_stamps: BTreeMap<PathBuf, Stamp>,
     claims: BTreeMap<String, Claim>,
     activity: BTreeMap<String, i64>,
+    revision: BTreeMap<String, u64>,
     version: u64,
 }
 
@@ -245,6 +257,7 @@ impl Watcher {
             claim_stamps: BTreeMap::new(),
             claims: BTreeMap::new(),
             activity: BTreeMap::new(),
+            revision: BTreeMap::new(),
             version: 0,
         }
     }
@@ -300,7 +313,10 @@ impl Watcher {
                 Err(index) => self.tasks.insert(index, task),
             }
             if let Some(secs) = epoch_secs(file_stamp.modified) {
-                self.activity.insert(name, secs);
+                self.activity.insert(name.clone(), secs);
+            }
+            if let Some(nanos) = epoch_nanos(file_stamp.modified) {
+                self.revision.insert(name, nanos);
             }
             changed = true;
         }
@@ -312,6 +328,10 @@ impl Watcher {
         let before = self.activity.len();
         self.activity.retain(|id, _| seen.contains(id));
         changed |= self.activity.len() != before;
+
+        let before = self.revision.len();
+        self.revision.retain(|id, _| seen.contains(id));
+        changed |= self.revision.len() != before;
 
         let before = self.task_stamps.len();
         self.task_stamps.retain(|path, _| {
@@ -392,7 +412,14 @@ impl Watcher {
             .tasks
             .iter()
             .zip(lifecycles.iter())
-            .map(|(task, lifecycle)| Entry::new(&self.repo, task, lifecycle))
+            .map(|(task, lifecycle)| {
+                Entry::new(
+                    &self.repo,
+                    task,
+                    lifecycle,
+                    self.revision.get(task.id.as_str()).copied(),
+                )
+            })
             .collect();
         entries.sort_by(|left, right| {
             left.state
@@ -654,6 +681,10 @@ fn respond_task(stream: &mut TcpStream, server: &Server, raw_id: &str) {
     let mut payload = core_json::task_json(&task, &server.repo.rel_task_file(&id));
     if let Some(object) = payload.as_object_mut() {
         object.insert(
+            "files".to_owned(),
+            serde_json::to_value(task_files(&server.repo, &task)).unwrap_or(Value::Null),
+        );
+        object.insert(
             "lifecycle".to_owned(),
             json!({
                 "state": lifecycle.state,
@@ -669,6 +700,78 @@ fn respond_task(stream: &mut TcpStream, server: &Server, raw_id: &str) {
     }
     let body = payload.to_string();
     let _ = respond(stream, 200, &[], "application/json", body.as_bytes());
+}
+
+/// A file next to `TASK.md`: no content, just the metadata a link or thumbnail
+/// needs.
+#[derive(Debug, Serialize)]
+struct TaskFile {
+    name: String,
+    path: String,
+    size: u64,
+    kind: &'static str,
+}
+
+/// Files in the task directory, excluding `TASK.md` and hidden entries. Read on
+/// demand: attachments change rarely and keeping them out of the snapshot keeps
+/// the broadcast small.
+fn task_files(repo: &Repo, task: &Task) -> Vec<TaskFile> {
+    let Some(dir) = task.path.parent() else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+
+    let mut files: Vec<TaskFile> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name == "TASK.md" || name.starts_with('.') {
+                return None;
+            }
+            let metadata = entry.metadata().ok()?;
+            if !metadata.is_file() {
+                return None;
+            }
+            Some(TaskFile {
+                kind: file_kind(&name),
+                path: repo.rel_path(&entry.path()),
+                size: metadata.len(),
+                name,
+            })
+        })
+        .collect();
+    files.sort_by(|left, right| left.name.cmp(&right.name));
+    files
+}
+
+/// `image` for formats a browser renders inline, `text` for files the content
+/// pane can show, `file` for everything else.
+fn file_kind(name: &str) -> &'static str {
+    match extension(name).as_str() {
+        "png" | "jpg" | "jpeg" | "gif" | "webp" => "image",
+        "md" | "markdown" | "txt" | "log" | "json" | "toml" | "yaml" | "yml" | "csv" => "text",
+        _ => "file",
+    }
+}
+
+/// Inline types only: SVG stays text, so a task attachment cannot execute
+/// script in the board's origin.
+fn image_content_type(name: &str) -> Option<&'static str> {
+    match extension(name).as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
+fn extension(name: &str) -> String {
+    name.rsplit_once('.')
+        .map(|(_, extension)| extension.to_ascii_lowercase())
+        .unwrap_or_default()
 }
 
 fn respond_tree(stream: &mut TcpStream, server: &Server) {
@@ -735,26 +838,32 @@ fn respond_file(stream: &mut TcpStream, server: &Server, query: &str) {
     };
 
     match read_repo_file(&server.root, &relative, server.max_file) {
-        Ok(bytes) => match String::from_utf8(bytes) {
-            Ok(text) => {
-                let _ = respond(
-                    stream,
-                    200,
-                    &[],
-                    "text/plain; charset=utf-8",
-                    text.as_bytes(),
-                );
+        Ok(bytes) => {
+            if let Some(content_type) = image_content_type(&relative) {
+                let _ = respond(stream, 200, &[], content_type, &bytes);
+                return;
             }
-            Err(_) => {
-                let _ = respond(
-                    stream,
-                    415,
-                    &[],
-                    "text/plain; charset=utf-8",
-                    b"binary file\n",
-                );
+            match String::from_utf8(bytes) {
+                Ok(text) => {
+                    let _ = respond(
+                        stream,
+                        200,
+                        &[],
+                        "text/plain; charset=utf-8",
+                        text.as_bytes(),
+                    );
+                }
+                Err(_) => {
+                    let _ = respond(
+                        stream,
+                        415,
+                        &[],
+                        "text/plain; charset=utf-8",
+                        b"binary file\n",
+                    );
+                }
             }
-        },
+        }
         Err(FileError::TooLarge) => {
             let _ = respond(
                 stream,
@@ -1021,5 +1130,17 @@ mod tests {
         assert_eq!(poll_interval("5"), Some(Duration::from_secs(5)));
         assert_eq!(poll_interval("50ms"), None);
         assert_eq!(poll_interval("soon"), None);
+    }
+
+    #[test]
+    fn attachment_kinds_follow_the_extension() {
+        assert_eq!(file_kind("screenshot.PNG"), "image");
+        assert_eq!(file_kind("notes.md"), "text");
+        assert_eq!(file_kind("dump.bin"), "file");
+        assert_eq!(file_kind("Makefile"), "file");
+
+        assert_eq!(image_content_type("a.jpeg"), Some("image/jpeg"));
+        assert_eq!(image_content_type("a.webp"), Some("image/webp"));
+        assert_eq!(image_content_type("a.svg"), None);
     }
 }

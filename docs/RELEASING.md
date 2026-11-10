@@ -14,7 +14,7 @@
 3. `.github/workflows/release.yml` builds and publishes:
 
    | Target | Runner |
-   |-|-|
+   | - | - |
    | `x86_64-unknown-linux-musl` | ubuntu-latest |
    | `aarch64-apple-darwin` | macos-14 |
    | `x86_64-pc-windows-msvc` | windows-latest |

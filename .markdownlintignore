@@ -1,0 +1,9 @@
+# Upstream checkout: behavioural reference only, never edited.
+reference/
+
+# Build output and dependencies.
+target/
+node_modules/
+
+# Task bodies are free-form data written by users and agents, not docs.
+tasks/

@@ -31,9 +31,10 @@
   }
   .brand { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .brand strong { font-size: 16px; letter-spacing: 0.04em; }
-  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #6b7280; margin-right: 6px; vertical-align: 1px; }
-  .dot.on { background: #3ddc84; box-shadow: 0 0 8px #3ddc8499; }
-  .dot.off { background: #f97362; }
+  .dot { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border: 2px solid #6b7280; border-radius: 50%; background: transparent; }
+  /* Shape carries the state; colour only reinforces it (WCAG 1.4.1). */
+  .dot.on { background: #3ddc84; border-color: #3ddc84; box-shadow: 0 0 8px #3ddc8499; }
+  .dot.off { border-color: #f97362; border-radius: 2px; }
 
   .counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .count {
@@ -99,6 +100,15 @@
   dl.facts dt { color: #8b93a3; }
   dl.facts dd { margin: 0; }
 
+  h2.section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: #8b93a3; margin: 0 0 8px; }
+  .attachments { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 22px; align-items: flex-start; }
+  .thumb { margin: 0; width: 220px; }
+  .thumb img { display: block; width: 100%; height: auto; border: 1px solid #20242c; border-radius: 8px; background: #11161d; }
+  .thumb figcaption { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; margin-top: 4px; }
+  .file-row { display: flex; justify-content: space-between; gap: 16px; min-width: 260px; padding: 6px 10px; border: 1px solid #20242c; border-radius: 6px; color: #d8dbe2; }
+  .file-row:hover { border-color: #2c3443; text-decoration: none; }
+  .screenshot { max-width: 100%; border: 1px solid #20242c; border-radius: 8px; background: #11161d; }
+
   .body { max-width: 78ch; }
   .body h1, .body h2, .body h3 { margin: 1.2em 0 0.4em; line-height: 1.25; }
   .body p { margin: 0.6em 0; }
@@ -118,8 +128,14 @@
     background: #11161d; border: 1px solid #232933; color: inherit; font: inherit;
   }
   .filter:focus { outline: 1px solid #2f5f9e; }
-  ul.tree { gap: 2px; font-size: 13px; }
-  ul.tree .dir { color: #8b93a3; }
+  ul.tree { display: block; gap: 0; font-size: 13px; }
+  ul.tree ul { display: block; margin: 2px 0 2px 8px; padding-left: 12px; border-left: 1px solid #1d222a; }
+  ul.tree li { list-style: none; }
+  ul.tree details > summary { cursor: pointer; padding: 1px 0; color: #c9d1d9; list-style: none; }
+  ul.tree summary::-webkit-details-marker { display: none; }
+  ul.tree summary::before { content: "▸"; display: inline-block; width: 12px; color: #8b93a3; }
+  ul.tree details[open] > summary::before { content: "▾"; }
+  ul.tree a { display: inline-block; padding: 1px 0; }
   .btn {
     background: #1a212b; border: 1px solid #2a3341; color: #d8dbe2; border-radius: 6px;
     padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer;
@@ -131,7 +147,7 @@
 <aside id="rail">
   <div class="brand">
     <strong>tatrs</strong>
-    <span class="muted"><i id="dot" class="dot"></i><span id="updated">connecting…</span></span>
+    <span class="muted" role="status" aria-live="polite"><i id="dot" class="dot" role="img" aria-label="connecting" title="connecting"></i><span id="updated">connecting…</span></span>
   </div>
   <div class="derived" title="tatrs derives these states on read from STATUS, live leases, DEPENDS and reserved tags. Nothing is written to TASK.md.">derived · not stored</div>
   <div id="counts" class="counts"></div>
@@ -170,7 +186,6 @@ const KEYS = [
 ];
 
 const OPEN_STATES = ["received", "in_progress", "paused", "waiting"];
-const TREE_LIMIT = 400;
 
 const HELP = {
   received: "Open task; work has not started yet.",
@@ -195,7 +210,7 @@ const FLAG_HELP = {
 
 const LEGEND = ["received", "in_progress", "paused", "waiting", "completed", "refused", "ready", "attention"];
 
-const state = { board: null, tree: null, view: "", filter: null };
+const state = { board: null, tree: null, openTree: new Set(), view: "", filter: null, taskId: null, taskSignature: null, taskRequest: 0 };
 
 const $ = (id) => document.getElementById(id);
 
@@ -224,6 +239,42 @@ function buildLegend() {
   $("legend-list").innerHTML = LEGEND.map((key) =>
     `<li><code>${label(key)}</code> ${escapeHtml(HELP[key])}</li>`
   ).join("");
+}
+
+function setConnection(state, text) {
+  const dot = $("dot");
+  dot.className = state ? `dot ${state}` : "dot";
+  dot.title = text;
+  dot.setAttribute("aria-label", text);
+}
+
+function formatBytes(size) {
+  if (!size) return "0 B";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KiB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+function attachments(files) {
+  if (!files || files.length === 0) {
+    return '<p class="empty">no attachments in this task folder</p>';
+  }
+  const items = files.map((file) => {
+    const href = `#/file/${file.path}`;
+    if (file.kind === "image") {
+      return `<figure class="thumb">
+        <a href="${href}" title="${escapeHtml(file.name)}">
+          <img src="/api/file?path=${encodeURIComponent(file.path)}" alt="${escapeHtml(file.name)}" loading="lazy">
+        </a>
+        <figcaption><span class="mono">${escapeHtml(file.name)}</span> <span class="muted">${formatBytes(file.size)}</span></figcaption>
+      </figure>`;
+    }
+    return `<a class="file-row" href="${href}">
+      <span class="mono">${escapeHtml(file.name)}</span>
+      <span class="muted">${file.kind} · ${formatBytes(file.size)}</span>
+    </a>`;
+  });
+  return `<div class="attachments">${items.join("")}</div>`;
 }
 
 function timeAgo(iso) {
@@ -384,7 +435,7 @@ function renderRail(board) {
   }
 
   $("updated").textContent = "updated " + timeAgo(board.generated_at);
-  $("dot").className = "dot on";
+  setConnection("on", "connected");
 }
 
 /* ------------------------------------------------------------------ views */
@@ -427,16 +478,32 @@ function showBoard(filter) {
     </table>`;
 }
 
-async function showTask(id) {
+function boardEntry(id) {
+  if (!state.board) return null;
+  return state.board.tasks.find((task) => task.id === id) || null;
+}
+
+function taskSignature(entry) {
+  return entry ? JSON.stringify(entry) : "missing";
+}
+
+async function showTask(id, options = {}) {
   state.view = "task";
+  state.taskId = id;
   state.filter = null;
-  $("view").innerHTML = '<p class="muted">loading…</p>';
+  const request = (state.taskRequest += 1);
+  if (!options.silent) $("view").innerHTML = '<p class="muted">loading…</p>';
   try {
     const response = await fetch("/api/task/" + encodeURIComponent(id));
     if (!response.ok) throw new Error((await response.text()).trim() || response.statusText);
     const task = await response.json();
+    if (request !== state.taskRequest) return;
+    // Remember the board entry this render came from, so the next SSE event
+    // only refetches when *this* task changed.
+    state.taskSignature = taskSignature(boardEntry(id));
     const lc = task.lifecycle || {};
     const acceptance = task.acceptance || {};
+    const scroll = $("pane").scrollTop;
     $("view").innerHTML = `
       <header class="pane-head">
         <h1>${escapeHtml(task.title)}</h1>
@@ -460,8 +527,14 @@ async function showTask(id) {
           : "no section"}${acceptance.ready ? ' <span class="tag ok">ready</span>' : ""}</dd>
         <dt>file</dt><dd><a class="mono" href="#/file/${task.path}">${escapeHtml(task.path)}</a></dd>
       </dl>
+      <h2 class="section-title">task folder</h2>
+      ${attachments(task.files)}
       <div class="body">${markdown(task.body || "")}</div>`;
+    if (options.silent) $("pane").scrollTop = scroll;
   } catch (err) {
+    // A silent refresh must not replace the view with an error on a transient
+    // failure; the next event retries.
+    if (request !== state.taskRequest || options.silent) return;
     $("view").innerHTML = `<p class="error">${escapeHtml(String(err))}</p>`;
   }
 }
@@ -476,31 +549,88 @@ async function showFiles() {
     if (!response.ok) throw new Error((await response.text()).trim() || response.statusText);
     const payload = await response.json();
     state.tree = payload.entries || [];
+    state.treeTruncated = Boolean(payload.truncated);
     renderFiles("");
   } catch (err) {
     $("view").innerHTML = `<p class="error">${escapeHtml(String(err))}</p>`;
   }
 }
 
+function buildTree(entries) {
+  const root = { name: "", path: "", dir: true, children: [] };
+  const index = new Map([["", root]]);
+
+  for (const entry of entries) {
+    const parts = entry.path.split("/");
+    let parent = root;
+    let prefix = "";
+    parts.forEach((part, depth) => {
+      prefix = prefix ? `${prefix}/${part}` : part;
+      let node = index.get(prefix);
+      if (!node) {
+        node = {
+          name: part,
+          path: prefix,
+          dir: depth < parts.length - 1 ? true : entry.dir,
+          children: [],
+        };
+        index.set(prefix, node);
+        parent.children.push(node);
+      }
+      if (depth === parts.length - 1) node.dir = entry.dir;
+      parent = node;
+    });
+  }
+
+  return root;
+}
+
+// Native <details> keeps the tree keyboard-accessible and needs no JS state.
+function renderTree(nodes, openPaths, forceOpen) {
+  const sorted = [...nodes].sort(
+    (left, right) => Number(right.dir) - Number(left.dir) || left.name.localeCompare(right.name)
+  );
+  return sorted.map((node) => {
+    if (!node.dir) {
+      return `<li><a class="mono" href="#/file/${encodeURI(node.path)}">${escapeHtml(node.name)}</a></li>`;
+    }
+    const open = forceOpen || openPaths.has(node.path) ? " open" : "";
+    return `<li><details data-path="${escapeHtml(node.path)}"${open}>` +
+      `<summary class="mono">${escapeHtml(node.name)}/</summary>` +
+      `<ul>${renderTree(node.children, openPaths, forceOpen)}</ul>` +
+      "</details></li>";
+  }).join("");
+}
+
 function renderFiles(filter) {
   const all = state.tree || [];
+  const files = all.filter((entry) => !entry.dir).length;
+  const folders = all.length - files;
   $("view").innerHTML = `
     <header class="pane-head">
       <h1>files</h1>
-      <span class="muted"><span id="tree-count">${all.length}</span> entries</span>
+      <span class="muted">${files} files · ${folders} folders${state.treeTruncated ? " · truncated" : ""}</span>
     </header>
     <input id="tree-filter" class="filter" placeholder="filter paths" value="${escapeHtml(filter)}">
     <ul id="tree-list" class="tree"></ul>`;
   const input = $("tree-filter");
   const paint = () => {
-    const needle = input.value.toLowerCase();
-    const matches = needle ? all.filter((entry) => entry.path.toLowerCase().includes(needle)) : all;
-    $("tree-count").textContent = String(matches.length);
-    $("tree-list").innerHTML = matches.slice(0, TREE_LIMIT).map((entry) =>
-      entry.dir
-        ? `<li class="dir mono">${escapeHtml(entry.path)}/</li>`
-        : `<li><a class="mono" href="#/file/${encodeURI(entry.path)}">${escapeHtml(entry.path)}</a></li>`
-    ).join("") + (matches.length > TREE_LIMIT ? `<li class="empty">… ${matches.length - TREE_LIMIT} more</li>` : "");
+    // Remember what is open across re-renders: a filtered tree only contains the
+    // matches, so reading the DOM alone would forget everything else.
+    const rendered = $("tree-list");
+    if (rendered) {
+      for (const node of rendered.querySelectorAll("details")) {
+        if (node.open) state.openTree.add(node.dataset.path);
+        else state.openTree.delete(node.dataset.path);
+      }
+    }
+    const needle = input.value.trim().toLowerCase();
+    const entries = needle
+      ? all.filter((entry) => entry.path.toLowerCase().includes(needle))
+      : all;
+    const tree = buildTree(entries);
+    const html = renderTree(tree.children, state.openTree, needle.length > 0);
+    $("tree-list").innerHTML = html || '<li class="empty">no matches</li>';
   };
   input.addEventListener("input", paint);
   paint();
@@ -509,6 +639,17 @@ function renderFiles(filter) {
 async function showFile(path) {
   state.view = "file";
   state.filter = null;
+
+  if (/\.(png|jpe?g|gif|webp)$/i.test(path)) {
+    $("view").innerHTML = `
+      <header class="pane-head">
+        <h1 class="mono">${escapeHtml(path)}</h1>
+        <span class="muted">image</span>
+      </header>
+      <img class="screenshot" src="/api/file?path=${encodeURIComponent(path)}" alt="${escapeHtml(path)}">`;
+    return;
+  }
+
   $("view").innerHTML = '<p class="muted">loading…</p>';
   try {
     const response = await fetch("/api/file?path=" + encodeURIComponent(path));
@@ -575,12 +716,21 @@ function connect() {
     renderRail(board);
     if (state.view === "board") showBoard(state.filter);
     if (state.view === "files") state.tree = null;
+    // Task views track their own entry; file views deliberately do not, because
+    // a document is a snapshot the reader expects to stay put.
+    if (state.view === "task" && state.taskId) {
+      const signature = taskSignature(boardEntry(state.taskId));
+      if (signature !== state.taskSignature) {
+        state.taskSignature = signature;
+        showTask(state.taskId, { silent: true });
+      }
+    }
   });
   source.onopen = () => {
-    $("dot").className = "dot on";
+    setConnection("on", "connected");
   };
   source.onerror = () => {
-    $("dot").className = "dot off";
+    setConnection("off", "disconnected, reconnecting");
     $("updated").textContent = "reconnecting…";
   };
 }

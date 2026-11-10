@@ -1,0 +1,6 @@
+{
+  // Task bodies are free-form data and `reference/` is a read-only upstream
+  // checkout. Rule settings live in `.markdownlint.json`; this file only
+  // scopes what the CLI lints.
+  "ignores": ["reference/**", "target/**", "node_modules/**", "tasks/**"]
+}

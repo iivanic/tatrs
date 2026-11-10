@@ -983,9 +983,10 @@ fn http_get(addr: &str, target: &str) -> String {
         "GET {target} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n"
     )
     .unwrap();
-    let mut response = String::new();
-    stream.read_to_string(&mut response).unwrap();
-    response
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response).unwrap();
+    // Image bodies are not UTF-8; headers and text assertions still work.
+    String::from_utf8_lossy(&response).into_owned()
 }
 
 fn http_json(response: &str) -> Value {
@@ -1033,6 +1034,39 @@ fn serve_exposes_a_read_only_board() {
     assert_eq!(status["tasks"][0]["state"], "paused");
     assert_eq!(status["tasks"][0]["declared"], true);
     assert_eq!(status["tasks"][0]["also"], serde_json::json!([]));
+
+    // Attachments next to TASK.md are listed and served by kind.
+    let task_id = status["tasks"][0]["id"].as_str().unwrap().to_owned();
+    let task_path = tmp
+        .path()
+        .join(status["tasks"][0]["path"].as_str().unwrap());
+    let task_dir = task_path.parent().unwrap();
+    std::fs::write(task_dir.join("notes.md"), "# note\n").unwrap();
+    std::fs::write(
+        task_dir.join("shot.gif"),
+        b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;",
+    )
+    .unwrap();
+    std::fs::write(task_dir.join("blob.bin"), [0xff, 0xfe]).unwrap();
+
+    let detail = http_json(&http_get(&addr, &format!("/api/task/{task_id}?t={token}")));
+    let files = detail["files"].as_array().unwrap();
+    let names: Vec<&str> = files
+        .iter()
+        .map(|file| file["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, vec!["blob.bin", "notes.md", "shot.gif"]);
+    assert_eq!(files[1]["kind"], "text");
+    assert_eq!(files[2]["kind"], "image");
+
+    let encoded = format!("tasks/{task_id}/shot.gif").replace('/', "%2F");
+    let image = http_get(&addr, &format!("/api/file?path={encoded}&t={token}"));
+    assert!(image.starts_with("HTTP/1.1 200"), "{image}");
+    assert!(image.contains("Content-Type: image/gif"), "{image}");
+
+    let encoded = format!("tasks/{task_id}/blob.bin").replace('/', "%2F");
+    let binary = http_get(&addr, &format!("/api/file?path={encoded}&t={token}"));
+    assert!(binary.starts_with("HTTP/1.1 415"), "{binary}");
 
     let page = http_get(&addr, &format!("/?t={token}"));
     assert!(page.contains("live board"), "{page}");

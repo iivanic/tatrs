@@ -8,7 +8,7 @@ a git-native task tracker where every task is a directory with a `TASK.md` file.
 `tatrs` keeps the format and adds what agents and scripts need: stable JSON output,
 no interactive prompts, atomic writes, validation, and scheduling primitives.
 
-```
+```text
 tasks/
 +- tags
 +- 20261109-133012/
@@ -112,6 +112,7 @@ the status rail (`docs/DASHBOARD.md`).
 - `docs/MCP.md` — the stdio MCP server and its tools.
 - `docs/FORMAT.md` — the normative `TASK.md` grammar, including upstream quirks.
 - `docs/JSON.md` — versioned output schema.
+- `templates/` — `AGENTS.md` snippet, a portable `SKILL.md` for agent harnesses, and MCP configs.
 - `AGENTS.md` — how to work on this repo (human or agent).
 
 ## License

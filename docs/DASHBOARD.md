@@ -25,7 +25,7 @@ way for the board to disagree with `TASK.md`.
 ## 2. States
 
 | State | Meaning for a human | Evidence |
-|-|-|-|
+| - | - | - |
 | `received` | the ticket exists, nothing has started | `OPEN` and none of the signals below |
 | `in_progress` | someone is on it | live (unexpired) lease, or the `wip` tag |
 | `paused` | deliberately stopped, usually starved of resources | `paused` tag (declared) |
@@ -69,7 +69,7 @@ rule is: **count every task once, show every condition that holds.**
 Flags are orthogonal to the state. They are the part a human actually acts on.
 
 | Flag | Condition | Why it matters |
-|-|-|-|
+| - | - | - |
 | `unverified` | `CLOSED`, with at least one acceptance criterion still `- [ ]` | the task says done, its criteria say otherwise |
 | `notify-owner` | `CLOSED` and tagged `notify` | work is finished but the owner has not been told |
 | `stalled` | live lease, no file change for longer than `--stale` (default 2h) | the agent may be looping or dead while still holding the task |
@@ -86,7 +86,7 @@ rule (`ready::evaluate`), so the board and `tatrs ready` can never disagree.
 `lifecycle::Counts` is the board header:
 
 | Field | Meaning |
-|-|-|
+| - | - |
 | `total` | every task, open and closed |
 | `received`, `in_progress`, `paused`, `waiting` | open work by state |
 | `completed`, `refused` | closed work by outcome |
@@ -115,11 +115,16 @@ $ tatrs serve --no-browse          # status only, no file browser
   Clients use `EventSource`, which reconnects automatically after a restart.
 - **The page never blocks the stream.** The status rail is a fixed DOM and updates in place; the
   content pane is routed by URL hash (`#/task/<id>`, `#/file/<path>`, `#/files`) and is only
-  re-rendered when the route changes. Reading code while counts tick is the point.
+  re-rendered when the route changes. Reading code while counts tick is the point. An open **task
+  view** is live: when that task's entry changes (state, owner, flags, or the file's `rev`), it
+  re-fetches and keeps the pane's scroll position. A **file view** is deliberately a snapshot —
+  including `TASK.md` opened from the task — because a reader expects a document to stay put.
 - **Browsing is constrained.** Only paths under the repository root are served; after
   `canonicalize`, a path that escapes the root is refused. `.git`, `target`, `node_modules`,
   `.venv`, `dist`, `build`, and `.tatrs` are never browsable. Files larger than `--max-file`
   (default 2048 KiB) are refused, and non-UTF-8 files return `415`. There are no mutating routes.
+  The task view also lists the task folder itself: images become thumbnails served with their real
+  content type, text files link into the content pane, and anything else links to the raw bytes.
 - **Access is local.** The default bind is `127.0.0.1`; any other address requires `--allow-remote`.
   The session token is printed in the URL and set as an `HttpOnly` cookie by `/`. It keeps other
   local processes out; like a claim token, it is a capability, not a security boundary.
@@ -127,7 +132,7 @@ $ tatrs serve --no-browse          # status only, no file browser
 ### Scale
 
 | Tasks | Sweep | Re-parse on change | Snapshot | Notes |
-|-|-|-|-|-|
+| - | - | - | - | - |
 | 100 | < 1 ms | 1 file | ~15 KB | trivial |
 | 1 000 | ~2–5 ms | only changed files | ~150 KB | default settings are comfortable |
 | 2 000 | ~5–10 ms | only changed files | ~300 KB | still fine; rebroadcast only on change |

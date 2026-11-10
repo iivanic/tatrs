@@ -33,7 +33,7 @@
 ```
 
 | Field | Type | Notes |
-|-|-|-|
+| - | - | - |
 | `schema` | integer | always `1` today |
 | `id` | string | HUID |
 | `path` | string | `tasks/<id>/TASK.md`, forward slashes |
@@ -228,11 +228,11 @@ The URL carries a per-session capability token; opening it sets an `HttpOnly` co
 fetches and the event stream authenticate. All routes are `GET` and require the token:
 
 | Route | Body |
-|-|-|
+| - | - |
 | `/` | the dashboard: one self-contained HTML file |
 | `/events` | `text/event-stream`; one `board` event per change, plus a comment keepalive |
 | `/api/status` | the latest snapshot (below) |
-| `/api/task/<HUID>` | a task object plus a `lifecycle` object |
+| `/api/task/<HUID>` | a task object plus `lifecycle` and `files` |
 | `/api/tree` | `{"schema":1,"truncated":false,"entries":[{"path":"src/main.rs","dir":false}]}` |
 | `/api/file?path=REL` | UTF-8 file contents as `text/plain` |
 
@@ -248,7 +248,8 @@ Snapshot:
   "tasks": [
     {"id": "20261109-133012", "title": "Fix parser", "state": "in_progress",
      "also": [], "declared": false, "owner": "agent-3", "run": "run-1",
-     "since": "2026-11-10T20:00:00Z", "flags": [], "ready": false,
+     "since": "2026-11-10T20:00:00Z", "rev": 1794350748551955000,
+     "flags": [], "ready": false,
      "priority": 10, "tags": ["bug", "agent"], "path": "tasks/20261109-133012/TASK.md"}
   ]
 }
@@ -258,9 +259,24 @@ Snapshot:
 `state` is the derived lifecycle (`docs/DASHBOARD.md`), `declared` distinguishes a tag-driven state
 from an observed one, and `since` is ISO-8601 UTC, best effort. `also` lists the other lifecycle
 states that also hold (for example a paused task whose dependency is still open), ordered by board
-rank; counting always uses `state`, so the six state counts partition the tree. Bodies are excluded
-from snapshots (they are fetched per task) to keep the broadcast small.
+rank; counting always uses `state`, so the six state counts partition the tree. `rev` is
+`TASK.md`'s modification time in nanoseconds: it changes on every edit, including body-only edits,
+so a client can tell whether its cached view of a task is stale. Bodies are excluded from snapshots
+(they are fetched per task) to keep the broadcast small.
 
+`GET /api/task/<HUID>` adds the task folder next to `TASK.md`:
+
+```json
+{"files": [
+  {"name": "notes.md", "path": "tasks/20261009-120000/notes.md", "size": 412, "kind": "text"},
+  {"name": "screenshot.png", "path": "tasks/20261009-120000/screenshot.png", "size": 48120, "kind": "image"}
+]}
+```
+
+`kind` is `image` (png/jpeg/gif/webp), `text` (markdown, logs, JSON, CSV, ...), or `file` for
+anything else. Entries are sorted by name and exclude `TASK.md` and hidden files.
+`/api/file` serves the image formats inline with their real content type; other binaries return
+`415`, and SVG is treated as text so an attachment cannot script the board's origin.
 
 ## `tatrs check --json`
 
@@ -304,7 +320,7 @@ from snapshots (they are fetched per task) to keep the broadcast small.
 
 One line per task, tab-separated, no header, no quoting:
 
-```
+```text
 <id>	<status>	<priority>	<tags>	<title>	<path>
 ```
 
@@ -314,7 +330,7 @@ should use `--json`.
 ## Exit codes
 
 | Code | Meaning |
-|-|-|
+| - | - |
 | 0 | success, including "nothing matched" without `--fail-if-empty` |
 | 1 | runtime or I/O error |
 | 2 | usage error (bad flags, invalid HUID argument, read-only violation) |

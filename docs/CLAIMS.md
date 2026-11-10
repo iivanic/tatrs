@@ -7,7 +7,7 @@ owner, carries a random token, and expires. Leases are runtime state, never part
 ## Where leases live
 
 | Project | Location |
-|-|-|
+| - | - |
 | git repository | `<git-common-dir>/tatrs/claims/<HUID>.json` — shared by every worktree of the clone |
 | plain directory | `tasks/.tatrs/claims/<HUID>.json` — kept out of git by the generated `tasks/.gitignore` |
 
@@ -57,7 +57,7 @@ claim file. Leases stop cooperating agents from colliding, not adversaries.
 ## Exit codes
 
 | Code | Meaning |
-|-|-|
+| - | - |
 | 0 | claimed, refreshed, released, or listed |
 | 3 | task is not dispatchable (readiness blockers printed to stderr) |
 | 4 | lease held by another owner, or token mismatch |

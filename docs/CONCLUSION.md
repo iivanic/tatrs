@@ -17,7 +17,7 @@ For agentic development the valuable parts are:
 The parts that block automation are tool-level, not model-level:
 
 | Gap | Consequence for agents |
-|-|-|
+| - | - |
 | Human/compiler-format output only | parsing `TASK.md:1: OPEN [PRIORITY: 3] [bug] Title` is brittle |
 | Interactive prompts (`todo`, duplicate-title check) | agent runs hang instead of failing fast |
 | In-place `TASK.md` truncation, check-then-mkdir | concurrent agents can clobber tasks |
