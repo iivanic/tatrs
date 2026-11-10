@@ -30,7 +30,11 @@
     background: #0b0d11;
   }
   .brand { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-  .brand strong { font-size: 16px; letter-spacing: 0.04em; }
+  .brand-project { display: inline-flex; align-items: baseline; gap: 4px; min-width: 0; }
+  .brand-tool { font-size: 11px; letter-spacing: 0.04em; color: #8b93a3; }
+  #project { font-size: 16px; color: #e6e9ef; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .back { font-size: 12px; color: #8b93a3; border: 1px solid #232933; border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
+  .back:hover { color: #d8dbe2; border-color: #2c3443; text-decoration: none; }
   .dot { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border: 2px solid #6b7280; border-radius: 50%; background: transparent; }
   /* Shape carries the state; colour only reinforces it (WCAG 1.4.1). */
   .dot.on { background: #3ddc84; border-color: #3ddc84; box-shadow: 0 0 8px #3ddc8499; }
@@ -146,7 +150,7 @@
 <body>
 <aside id="rail">
   <div class="brand">
-    <strong>tatrs</strong>
+    <span class="brand-project"><span class="brand-tool">tatrs@</span><span id="project">workspace</span></span>
     <span class="muted" role="status" aria-live="polite"><i id="dot" class="dot" role="img" aria-label="connecting" title="connecting"></i><span id="updated">connecting…</span></span>
   </div>
   <div class="derived" title="tatrs derives these states on read from STATUS, live leases, DEPENDS and reserved tags. Nothing is written to TASK.md.">derived · not stored</div>
@@ -435,6 +439,10 @@ function renderRail(board) {
   }
 
   $("updated").textContent = "updated " + timeAgo(board.generated_at);
+  if (board.project) {
+    $("project").textContent = board.project;
+    document.title = `${board.project} · tatrs`;
+  }
   setConnection("on", "connected");
 }
 
@@ -506,6 +514,7 @@ async function showTask(id, options = {}) {
     const scroll = $("pane").scrollTop;
     $("view").innerHTML = `
       <header class="pane-head">
+        <a class="back" href="#/">← board</a>
         <h1>${escapeHtml(task.title)}</h1>
         <span class="mono muted">${task.id}</span>
       </header>
@@ -614,6 +623,18 @@ function renderFiles(filter) {
     <input id="tree-filter" class="filter" placeholder="filter paths" value="${escapeHtml(filter)}">
     <ul id="tree-list" class="tree"></ul>`;
   const input = $("tree-filter");
+  // `toggle` does not bubble; capture it so expansion is recorded the moment a
+  // folder is opened, before any navigation replaces the pane.
+  $("tree-list").addEventListener(
+    "toggle",
+    (event) => {
+      const node = event.target;
+      if (!node.dataset || !node.dataset.path) return;
+      if (node.open) state.openTree.add(node.dataset.path);
+      else state.openTree.delete(node.dataset.path);
+    },
+    true
+  );
   const paint = () => {
     // Remember what is open across re-renders: a filtered tree only contains the
     // matches, so reading the DOM alone would forget everything else.
@@ -643,6 +664,7 @@ async function showFile(path) {
   if (/\.(png|jpe?g|gif|webp)$/i.test(path)) {
     $("view").innerHTML = `
       <header class="pane-head">
+        <a class="back" href="#/files">← files</a>
         <h1 class="mono">${escapeHtml(path)}</h1>
         <span class="muted">image</span>
       </header>
@@ -659,6 +681,7 @@ async function showFile(path) {
     const rendered = isMarkdown ? markdown(text) : "";
     $("view").innerHTML = `
       <header class="pane-head">
+        <a class="back" href="#/files">← files</a>
         <h1 class="mono">${escapeHtml(path)}</h1>
         <span class="muted">${text.split("\n").length} lines</span>
         ${isMarkdown ? '<button id="toggle" class="btn">raw</button>' : ""}

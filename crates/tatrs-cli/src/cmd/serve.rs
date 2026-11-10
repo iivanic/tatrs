@@ -73,8 +73,13 @@ pub fn run(global: &Global, args: &ServeArgs) -> Result<(), AppError> {
     })?;
     let claims_dir = ClaimStore::locate(&repo).dir().to_path_buf();
     let stale_after = i64::try_from(stale).unwrap_or(i64::MAX);
+    let project = repo
+        .root()
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| repo.root().to_string_lossy().into_owned());
 
-    let mut watcher = Watcher::new(repo.clone(), claims_dir, stale_after);
+    let mut watcher = Watcher::new(repo.clone(), claims_dir, stale_after, project.clone());
     watcher.sweep();
     let (version, snapshot) = watcher.rebuild();
 
@@ -116,6 +121,7 @@ pub fn run(global: &Global, args: &ServeArgs) -> Result<(), AppError> {
                 "schema": core_json::SCHEMA_VERSION,
                 "url": url,
                 "root": root.to_string_lossy(),
+                "project": project,
                 "browse": !args.no_browse,
                 "poll_ms": poll.as_millis(),
             })
@@ -232,6 +238,7 @@ impl Entry {
 /// Incremental cache over `tasks/` and the claim store.
 struct Watcher {
     repo: Repo,
+    project: String,
     tasks_dir: PathBuf,
     claims_dir: PathBuf,
     stale_after: i64,
@@ -245,10 +252,11 @@ struct Watcher {
 }
 
 impl Watcher {
-    fn new(repo: Repo, claims_dir: PathBuf, stale_after: i64) -> Self {
+    fn new(repo: Repo, claims_dir: PathBuf, stale_after: i64, project: String) -> Self {
         let tasks_dir = repo.tasks_dir();
         Self {
             repo,
+            project,
             tasks_dir,
             claims_dir,
             stale_after,
@@ -433,6 +441,7 @@ impl Watcher {
             "schema": core_json::SCHEMA_VERSION,
             "version": self.version,
             "generated_at": time::format_iso(now),
+            "project": self.project.as_str(),
             "counts": counts,
             "tasks": entries,
         });
