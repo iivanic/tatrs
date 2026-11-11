@@ -22,7 +22,7 @@ tasks/
 
 Working today: `init`, `new`, `ls` (TQL queries, batch updates, `--dry-run`), `show`, `find`, `id`,
 `ref`, `summary`, `todo`, `ready`, `claim`/`release`, `check`, `mcp`, `serve`, `completions`,
-`man`, `version`. Distribution is live: `v0.1.0` binaries and a container image. Next: M4, upstream
+`man`, `version`. Distribution is live: `v0.2.0` binaries and a container image. Next: M4, upstream
 patches and a standalone format spec. See `docs/PLAN.md`, `docs/QUERY.md`, `docs/CLAIMS.md`,
 `docs/DASHBOARD.md`, and `docs/MCP.md`.
 
@@ -48,9 +48,9 @@ Prebuilt binaries are published with each `v*` tag as
 (`x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`):
 
 ```console
-curl -LO https://github.com/iivanic/tatrs/releases/download/v0.1.0/tatrs-0.1.0-x86_64-unknown-linux-musl.zip
-sha256sum -c tatrs-0.1.0-x86_64-unknown-linux-musl.zip.sha256
-unzip tatrs-0.1.0-x86_64-unknown-linux-musl.zip -d ~/.local/bin
+curl -LO https://github.com/iivanic/tatrs/releases/download/v0.2.0/tatrs-0.2.0-x86_64-unknown-linux-musl.zip
+sha256sum -c tatrs-0.2.0-x86_64-unknown-linux-musl.zip.sha256
+unzip tatrs-0.2.0-x86_64-unknown-linux-musl.zip -d ~/.local/bin
 ```
 
 A container image for agent sandboxes can be built from the repo:

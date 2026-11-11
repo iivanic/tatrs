@@ -414,7 +414,7 @@ dependencies = [
 
 [[package]]
 name = "tatrs-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -429,7 +429,7 @@ dependencies = [
 
 [[package]]
 name = "tatrs-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ignore",
  "serde",
@@ -440,7 +440,7 @@ dependencies = [
 
 [[package]]
 name = "tatrs-mcp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde_json",
  "tatrs-core",

@@ -311,7 +311,7 @@ anything else. Entries are sorted by name and exclude `TASK.md` and hidden files
 ## `tatrs version --json`
 
 ```json
-{"schema": 1, "name": "tatrs", "version": "0.1.0", "commit": null}
+{"schema": 1, "name": "tatrs", "version": "0.2.0", "commit": null}
 ```
 
 `commit` is `null` for local builds; release builds set `TATRS_GIT_COMMIT` at compile time.

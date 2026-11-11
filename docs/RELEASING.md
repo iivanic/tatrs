@@ -7,8 +7,8 @@
 2. Commit, then tag on `main`:
 
    ```console
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag v0.2.0
+   git push origin v0.2.0
    ```
 
 3. `.github/workflows/release.yml` builds and publishes:
@@ -30,7 +30,7 @@ cargo build --release --locked --target <target> --bin tatrs
 pwsh -File scripts/package-release.ps1 `
   -Target <target> `
   -Binary target/<target>/release/tatrs[.exe] `
-  -Version v0.1.0 `
+  -Version v0.2.0 `
   -OutDir dist
 ```
 
@@ -41,8 +41,8 @@ Windows during development; the first tagged run is the cross-platform proof.
 ## Verifying an artifact
 
 ```console
-sha256sum -c tatrs-0.1.0-x86_64-unknown-linux-musl.zip.sha256
-unzip tatrs-0.1.0-x86_64-unknown-linux-musl.zip -d ~/.local/bin
+sha256sum -c tatrs-0.2.0-x86_64-unknown-linux-musl.zip.sha256
+unzip tatrs-0.2.0-x86_64-unknown-linux-musl.zip -d ~/.local/bin
 tatrs version        # prints the commit stamped at build time
 ```
 
