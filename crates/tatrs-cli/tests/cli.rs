@@ -1237,6 +1237,10 @@ fn serve_exposes_a_read_only_board() {
 
     let page = http_get(&addr, &format!("/?t={token}"));
     assert!(page.contains("live board"), "{page}");
+    assert!(
+        page.contains("flags are independent"),
+        "legend must distinguish flags from also-states"
+    );
     assert!(page.contains("id=\"board-search\""), "search box missing");
     assert!(page.contains("class=\"sort\""), "sortable headers missing");
     assert!(
