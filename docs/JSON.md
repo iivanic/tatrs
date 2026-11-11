@@ -258,10 +258,11 @@ Snapshot:
 
 `version` increases on every recomputation, so a reconnecting client can skip a redundant render.
 `browse` mirrors `--no-browse`: when false, `/api/tree` and `/api/file` return `404` and the board
-hides its `files` link. `state` is the derived lifecycle (`docs/DASHBOARD.md`), `declared` distinguishes a tag-driven state
-from an observed one, and `since` is ISO-8601 UTC, best effort. `also` lists the other lifecycle
-states that also hold (for example a paused task whose dependency is still open), ordered by board
-rank; counting always uses `state`, so the six state counts partition the tree. `rev` is
+hides its `files` link. `state` is the derived lifecycle (`docs/DASHBOARD.md`), `declared`
+distinguishes a tag-driven state from an observed one, and `since` is ISO-8601 UTC, best effort.
+`also` lists the other lifecycle states that also hold (for example a paused task whose dependency
+is still open), ordered by board rank; counting always uses `state`, so the six state counts
+partition the tree. `rev` is
 `TASK.md`'s modification time in nanoseconds: it changes on every edit, including body-only edits,
 so a client can tell whether its cached view of a task is stale. Bodies are excluded from snapshots
 (they are fetched per task) to keep the broadcast small.

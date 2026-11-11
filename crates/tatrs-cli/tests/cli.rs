@@ -1081,6 +1081,12 @@ fn serve_exposes_a_read_only_board() {
         page.contains("href=\"#/\" title=\"back to the board\""),
         "brand must link to the board"
     );
+    assert!(page.contains("← task"), "task back link missing");
+    assert!(page.contains("← files"), "files back link missing");
+    assert!(
+        page.contains("function backLink"),
+        "back-link helper missing"
+    );
 
     let escape = http_get(
         &addr,

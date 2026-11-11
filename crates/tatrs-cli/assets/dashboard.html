@@ -240,6 +240,7 @@ const STATE_ORDER = Object.fromEntries(KEYS.map(([key], index) => [key, index]))
 const state = {
   board: null, tree: null, openTree: new Set(), view: "", filter: null, taskId: null,
   taskSignature: null, taskRequest: 0, query: "", sort: { key: "id", dir: "desc" }, boardFilter: null,
+  lastRoute: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -781,7 +782,16 @@ function renderFiles(filter) {
   paint();
 }
 
-async function showFile(path) {
+// Files opened from a task go back to that task; files opened from the tree go
+// back to the tree. A direct URL has no history and falls back to the tree.
+function backLink(from) {
+  if (typeof from === "string" && /^\/task\//.test(from)) {
+    return `<a class="back" href="#${escapeHtml(from)}">← task</a>`;
+  }
+  return '<a class="back" href="#/files">← files</a>';
+}
+
+async function showFile(path, from) {
   state.view = "file";
   state.filter = null;
   if (state.board && state.board.browse === false) {
@@ -794,7 +804,7 @@ async function showFile(path) {
   if (/\.(png|jpe?g|gif|webp)$/i.test(path)) {
     $("view").innerHTML = `
       <header class="pane-head">
-        <a class="back" href="#/files">← files</a>
+        ${backLink(from)}
         <h1 class="mono">${escapeHtml(path)}</h1>
         <span class="muted">image</span>
       </header>
@@ -811,7 +821,7 @@ async function showFile(path) {
     const rendered = isMarkdown ? markdown(text) : "";
     $("view").innerHTML = `
       <header class="pane-head">
-        <a class="back" href="#/files">← files</a>
+        ${backLink(from)}
         <h1 class="mono">${escapeHtml(path)}</h1>
         <span class="muted">${text.split("\n").length} lines</span>
         ${isMarkdown ? '<button id="toggle" class="btn">raw</button>' : ""}
@@ -847,9 +857,12 @@ function route() {
     }
   });
   const [kind, ...rest] = parts;
+  // Remember where we came from so a file can link back to its task.
+  const previous = state.lastRoute;
+  state.lastRoute = hash;
 
   if (kind === "task") return showTask(rest.join("/"));
-  if (kind === "file") return showFile(rest.join("/"));
+  if (kind === "file") return showFile(rest.join("/"), previous);
   if (kind === "files") return showFiles();
   if (kind === "tasks") return showBoard(rest[0] || null);
   return showBoard(null);

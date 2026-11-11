@@ -118,6 +118,9 @@ $ tatrs serve --no-browse          # status only, no file browser
   and sort order live in client state, so a live refresh repaints rows without stealing focus.
 - **No dead links.** `--no-browse` removes the `files` link from the rail, and opening `#/files`
   directly shows "file browser disabled" instead of a 404 from `/api/tree`.
+- **Back follows the origin.** A file opened from a task says `← task` and returns to that task; a
+  file opened from the tree says `← files`. A direct file URL with no history falls back to
+  `← files`.
 - **The page never blocks the stream.** The status rail is a fixed DOM and updates in place; the
   content pane is routed by URL hash (`#/task/<id>`, `#/file/<path>`, `#/files`) and is only
   re-rendered when the route changes. Reading code while counts tick is the point. An open **task
