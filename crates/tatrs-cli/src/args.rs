@@ -350,6 +350,10 @@ pub struct ServeArgs {
     #[arg(long, default_value = "1s", value_name = "DURATION")]
     pub poll: String,
 
+    /// Allow the board to POST the small allowlisted recovery actions
+    #[arg(long)]
+    pub allow_actions: bool,
+
     /// Report a live claim as stalled after this long with no task change
     #[arg(long, default_value = "2h", value_name = "DURATION")]
     pub stale: String,

@@ -995,6 +995,172 @@ fn http_json(response: &str) -> Value {
     serde_json::from_str(body).unwrap_or_else(|err| panic!("invalid json: {err}\n{body}"))
 }
 
+fn http_status(response: &str) -> u16 {
+    response
+        .split_whitespace()
+        .nth(1)
+        .and_then(|code| code.parse().ok())
+        .unwrap_or(0)
+}
+
+fn http_body(response: &str) -> Value {
+    let (_, body) = response.split_once("\r\n\r\n").expect("no headers");
+    serde_json::from_str(body).unwrap_or_else(|err| panic!("invalid json: {err}\n{body}"))
+}
+
+fn http_post(addr: &str, target: &str, body: &str) -> String {
+    let mut stream = std::net::TcpStream::connect(addr).unwrap();
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .unwrap();
+    write!(
+        stream,
+        "POST {target} HTTP/1.1\r\nHost: {addr}\r\nContent-Type: application/json\r\n\
+         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+    .unwrap();
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response).unwrap();
+    String::from_utf8_lossy(&response).into_owned()
+}
+
+#[test]
+fn serve_actions_are_allowlisted_and_reversible() {
+    let tmp = scratch();
+    init(tmp.path());
+    let task = create_agent(
+        tmp.path(),
+        "Actionable",
+        Some("## Acceptance\n\n- [ ] done"),
+    );
+    let id = task["id"].as_str().unwrap().to_owned();
+    let claimed = run_in(tmp.path(), &["claim", &id, "--owner", "agent-3"]);
+    assert!(claimed.status.success(), "{}", stderr(&claimed));
+
+    let mut child = tatrs()
+        .current_dir(tmp.path())
+        .args([
+            "serve",
+            "--port",
+            "0",
+            "--poll",
+            "200ms",
+            "--allow-actions",
+            "--json",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut line = String::new();
+    stdout.read_line(&mut line).unwrap();
+    let announced: Value = serde_json::from_str(line.trim()).unwrap();
+    let url = announced["url"].as_str().unwrap().to_owned();
+    let addr = url
+        .strip_prefix("http://")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    let token = url.split("t=").nth(1).unwrap().to_owned();
+
+    let page = http_get(&addr, &format!("/?t={token}"));
+    assert!(page.contains("release-lease"), "{page}");
+    assert!(page.contains("allow_actions"), "{page}");
+    assert!(page.contains("data-confirm"), "actions need a confirm step");
+    assert!(page.contains("confirm(button.dataset.confirm)"), "{page}");
+
+    let action = |task: &str, intent: &str| {
+        http_post(
+            &addr,
+            &format!("/api/action?t={token}"),
+            &serde_json::json!({"task": task, "intent": intent}).to_string(),
+        )
+    };
+
+    let released = action(&id, "release-lease");
+    assert_eq!(http_status(&released), 200, "{released}");
+    assert_eq!(http_body(&released)["changed"], true);
+    let claim_file = tmp
+        .path()
+        .join("tasks/.tatrs/claims")
+        .join(format!("{id}.json"));
+    assert!(!claim_file.exists(), "claim file was not removed");
+
+    let released_again = action(&id, "release-lease");
+    assert_eq!(http_body(&released_again)["changed"], false);
+
+    let unknown = action(&id, "close");
+    assert_eq!(http_status(&unknown), 400, "{unknown}");
+    assert!(
+        http_body(&unknown)["error"]
+            .as_str()
+            .unwrap()
+            .contains("unknown intent")
+    );
+
+    let paused = create(tmp.path(), "Paused", &["paused"], 10);
+    let paused_id = paused["id"].as_str().unwrap().to_owned();
+    let resumed = action(&paused_id, "resume");
+    assert_eq!(http_status(&resumed), 200, "{resumed}");
+    assert_eq!(http_body(&resumed)["changed"], true);
+
+    let paused_file = tmp.path().join(paused["path"].as_str().unwrap());
+    let content = std::fs::read_to_string(&paused_file).unwrap();
+    assert!(content.contains("- UPDATED:"), "{content}");
+    assert!(!content.contains("- TAGS: paused"), "{content}");
+
+    let resumed_again = action(&paused_id, "resume");
+    assert_eq!(http_body(&resumed_again)["changed"], false);
+
+    child.kill().unwrap();
+    let _ = child.wait();
+}
+
+#[test]
+fn serve_without_actions_has_no_mutating_route() {
+    let tmp = scratch();
+    init(tmp.path());
+    let task = create(tmp.path(), "Plain", &["bug"], 10);
+    let id = task["id"].as_str().unwrap();
+
+    let mut child = tatrs()
+        .current_dir(tmp.path())
+        .args(["serve", "--port", "0", "--poll", "200ms", "--json"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut line = String::new();
+    stdout.read_line(&mut line).unwrap();
+    let announced: Value = serde_json::from_str(line.trim()).unwrap();
+    let url = announced["url"].as_str().unwrap().to_owned();
+    let addr = url
+        .strip_prefix("http://")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    let token = url.split("t=").nth(1).unwrap().to_owned();
+
+    let response = http_post(
+        &addr,
+        &format!("/api/action?t={token}"),
+        &serde_json::json!({"task": id, "intent": "release-lease"}).to_string(),
+    );
+    assert_eq!(http_status(&response), 404, "{response}");
+
+    child.kill().unwrap();
+    let _ = child.wait();
+}
+
 #[test]
 fn serve_exposes_a_read_only_board() {
     let tmp = scratch();

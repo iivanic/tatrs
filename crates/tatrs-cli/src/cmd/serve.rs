@@ -10,7 +10,9 @@
 //!   other worktrees, and costs nothing when the tree is idle.
 //!
 //! The server binds loopback by default, requires a per-session capability
-//! token, serves only files under the repository root, and never mutates.
+//! token, and serves only files under the repository root. With
+//! `--allow-actions` it also accepts a small allowlisted set of recovery
+//! intents (D-006); without it there is no mutating route.
 
 use std::collections::BTreeMap;
 use std::collections::HashSet;
@@ -28,7 +30,7 @@ use tatrs_core::claims::ClaimStore;
 use tatrs_core::huid::Huid;
 use tatrs_core::json as core_json;
 use tatrs_core::lifecycle::{self, Context, Flag, Lifecycle, State};
-use tatrs_core::{Claim, Repo, Task, time};
+use tatrs_core::{Claim, Repo, StoreError, Task, Update, time};
 
 use crate::args::{Global, ServeArgs};
 use crate::error::AppError;
@@ -85,6 +87,7 @@ pub fn run(global: &Global, args: &ServeArgs) -> Result<(), AppError> {
         stale_after,
         project.clone(),
         !args.no_browse,
+        args.allow_actions,
     );
     watcher.sweep();
     let (version, snapshot) = watcher.rebuild();
@@ -142,6 +145,7 @@ pub fn run(global: &Global, args: &ServeArgs) -> Result<(), AppError> {
         root,
         token,
         browse: !args.no_browse,
+        allow_actions: args.allow_actions,
         max_file: args.max_file.saturating_mul(1024),
         watcher,
         shared,
@@ -246,6 +250,7 @@ struct Watcher {
     repo: Repo,
     project: String,
     browse: bool,
+    allow_actions: bool,
     tasks_dir: PathBuf,
     claims_dir: PathBuf,
     stale_after: i64,
@@ -265,12 +270,14 @@ impl Watcher {
         stale_after: i64,
         project: String,
         browse: bool,
+        allow_actions: bool,
     ) -> Self {
         let tasks_dir = repo.tasks_dir();
         Self {
             repo,
             project,
             browse,
+            allow_actions,
             tasks_dir,
             claims_dir,
             stale_after,
@@ -457,6 +464,7 @@ impl Watcher {
             "generated_at": time::format_iso(now),
             "project": self.project.as_str(),
             "browse": self.browse,
+            "allow_actions": self.allow_actions,
             "counts": counts,
             "tasks": entries,
         });
@@ -537,6 +545,7 @@ struct Server {
     root: PathBuf,
     token: String,
     browse: bool,
+    allow_actions: bool,
     max_file: u64,
     watcher: Arc<Mutex<Watcher>>,
     shared: Arc<Shared>,
@@ -547,6 +556,7 @@ struct Request {
     path: String,
     query: String,
     cookie: Option<String>,
+    body: Vec<u8>,
 }
 
 fn handle(server: Arc<Server>, mut stream: TcpStream) {
@@ -555,11 +565,30 @@ fn handle(server: Arc<Server>, mut stream: TcpStream) {
         return;
     };
 
-    if request.method != "GET" {
+    let is_action = request.method == "POST" && request.path == "/api/action";
+
+    // Without `--allow-actions` the route does not exist at all.
+    if is_action && !server.allow_actions {
+        let _ = respond(
+            &mut stream,
+            404,
+            &[],
+            "text/plain; charset=utf-8",
+            b"not found\n",
+        );
+        return;
+    }
+
+    if request.method != "GET" && !is_action {
+        let allow = if server.allow_actions {
+            "GET, POST"
+        } else {
+            "GET"
+        };
         let _ = respond(
             &mut stream,
             405,
-            &[("Allow", "GET")],
+            &[("Allow", allow)],
             "text/plain; charset=utf-8",
             b"method not allowed\n",
         );
@@ -574,6 +603,11 @@ fn handle(server: Arc<Server>, mut stream: TcpStream) {
             "text/plain; charset=utf-8",
             b"missing or invalid token; open the URL printed by `tatrs serve`\n",
         );
+        return;
+    }
+
+    if is_action {
+        respond_action(&server, &mut stream, &request);
         return;
     }
 
@@ -629,6 +663,139 @@ fn handle(server: Arc<Server>, mut stream: TcpStream) {
                 b"not found\n",
             );
         }
+    }
+}
+
+/// The only mutations the board may perform (D-006). Each maps to one existing
+/// core operation; there is no free-form edit surface.
+const ACTION_INTENTS: [&str; 6] = [
+    "release-lease",
+    "resume",
+    "unblock",
+    "reopen",
+    "mark-notified",
+    "clear-needs-human",
+];
+
+struct ActionError {
+    status: u16,
+    message: String,
+}
+
+impl ActionError {
+    fn new(status: u16, message: impl Into<String>) -> Self {
+        Self {
+            status,
+            message: message.into(),
+        }
+    }
+}
+
+fn respond_action(server: &Server, stream: &mut TcpStream, request: &Request) {
+    let payload: Value = match serde_json::from_slice(&request.body) {
+        Ok(value) => value,
+        Err(err) => {
+            return json_error(stream, 400, format!("invalid JSON body: {err}"));
+        }
+    };
+    let Some(task) = payload.get("task").and_then(Value::as_str) else {
+        return json_error(stream, 400, "`task` is required");
+    };
+    let Some(intent) = payload.get("intent").and_then(Value::as_str) else {
+        return json_error(stream, 400, "`intent` is required");
+    };
+
+    match perform_action(server, task, intent) {
+        Ok(result) => {
+            let body = result.to_string();
+            let _ = respond(stream, 200, &[], "application/json", body.as_bytes());
+        }
+        Err(err) => json_error(stream, err.status, err.message),
+    }
+}
+
+fn json_error(stream: &mut TcpStream, status: u16, message: impl Into<String>) {
+    let body = json!({ "error": message.into() }).to_string();
+    let _ = respond(stream, status, &[], "application/json", body.as_bytes());
+}
+
+fn perform_action(server: &Server, raw_task: &str, intent: &str) -> Result<Value, ActionError> {
+    if !ACTION_INTENTS.contains(&intent) {
+        return Err(ActionError::new(
+            400,
+            format!(
+                "unknown intent `{intent}`; allowed: {}",
+                ACTION_INTENTS.join(", ")
+            ),
+        ));
+    }
+
+    let id = Huid::parse(raw_task).map_err(|err| ActionError::new(400, err.to_string()))?;
+    let _lock = server
+        .repo
+        .try_lock(Duration::from_secs(5))
+        .map_err(|err| ActionError::new(409, format!("repository is busy: {err}")))?;
+
+    if intent == "release-lease" {
+        let released = ClaimStore::locate(&server.repo)
+            .force_release(&id)
+            .map_err(|err| ActionError::new(500, err.to_string()))?;
+        let task = server.repo.load_task(&id).map_err(action_load_error)?;
+        refresh_watcher(server);
+        return Ok(json!({
+            "schema": core_json::SCHEMA_VERSION,
+            "intent": intent,
+            "changed": released,
+            "task": core_json::task_json(&task, &server.repo.rel_task_file(&id)),
+        }));
+    }
+
+    let ops = match intent {
+        "resume" => "-paused",
+        "unblock" => "-blocked",
+        "reopen" => "open",
+        "mark-notified" => "-notify",
+        "clear-needs-human" => "-needs-human",
+        _ => unreachable!("intent list and match are in sync"),
+    };
+
+    let mut task = server.repo.load_task(&id).map_err(action_load_error)?;
+    let update = Update::compile(ops).map_err(|err| ActionError::new(500, err.message))?;
+    let changed = update.apply(&mut task);
+    if changed {
+        task.props
+            .put("UPDATED", time::format_iso(time::now_secs()));
+        server
+            .repo
+            .save(&task)
+            .map_err(|err| ActionError::new(500, err.to_string()))?;
+    }
+    refresh_watcher(server);
+
+    Ok(json!({
+        "schema": core_json::SCHEMA_VERSION,
+        "intent": intent,
+        "changed": changed,
+        "update": ops,
+        "task": core_json::task_json(&task, &server.repo.rel_task_file(&id)),
+    }))
+}
+
+fn action_load_error(err: StoreError) -> ActionError {
+    match err {
+        StoreError::NotFound(_) => ActionError::new(404, err.to_string()),
+        _ => ActionError::new(500, err.to_string()),
+    }
+}
+
+/// Recompute immediately so the board reflects an action without waiting for
+/// the next poll tick.
+fn refresh_watcher(server: &Server) {
+    if let Ok(mut watcher) = server.watcher.lock()
+        && watcher.sweep()
+    {
+        let (version, snapshot) = watcher.rebuild();
+        server.shared.publish(version, snapshot);
     }
 }
 
@@ -997,6 +1164,7 @@ fn reason(status: u16) -> &'static str {
         403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        409 => "Conflict",
         413 => "Payload Too Large",
         415 => "Unsupported Media Type",
         _ => "Error",
@@ -1007,21 +1175,48 @@ fn read_request(stream: &mut TcpStream) -> Option<Request> {
     let mut buffer = Vec::new();
     let mut chunk = [0u8; 2048];
 
-    loop {
+    let header_end = loop {
         let read = stream.read(&mut chunk).ok()?;
         if read == 0 {
             return None;
         }
         buffer.extend_from_slice(&chunk[..read]);
-        if buffer.windows(4).any(|window| window == b"\r\n\r\n") {
-            break;
+        if let Some(index) = buffer.windows(4).position(|window| window == b"\r\n\r\n") {
+            break index;
         }
         if buffer.len() > 16 * 1024 {
             return None;
         }
+    };
+
+    let mut content_length = 0usize;
+    {
+        let head = String::from_utf8_lossy(&buffer[..header_end]);
+        for line in head.split("\r\n").skip(1) {
+            let Some((name, value)) = line.split_once(':') else {
+                continue;
+            };
+            if name.trim().eq_ignore_ascii_case("content-length") {
+                content_length = value.trim().parse().ok()?;
+            }
+        }
+    }
+    // Recovery intents are tiny; anything larger is not our protocol.
+    if content_length > 8 * 1024 {
+        return None;
     }
 
-    let head = String::from_utf8_lossy(&buffer);
+    let body_start = header_end + 4;
+    while buffer.len() < body_start + content_length {
+        let read = stream.read(&mut chunk).ok()?;
+        if read == 0 {
+            return None;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+    }
+    let body = buffer[body_start..body_start + content_length].to_vec();
+
+    let head = String::from_utf8_lossy(&buffer[..header_end]);
     let mut lines = head.split("\r\n");
     let mut request_line = lines.next()?.split_whitespace();
     let method = request_line.next()?.to_owned();
@@ -1050,6 +1245,7 @@ fn read_request(stream: &mut TcpStream) -> Option<Request> {
         path: percent_decode(path)?,
         query: query.to_owned(),
         cookie,
+        body,
     })
 }
 

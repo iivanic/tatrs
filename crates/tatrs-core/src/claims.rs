@@ -290,6 +290,20 @@ impl ClaimStore {
             Err(err) => Err(ClaimError::Io(err)),
         }
     }
+
+    /// Supervisor-only release: no token, but still serialized by the task lock.
+    ///
+    /// This is the authority behind `serve --allow-actions` (see D-006). It is
+    /// deliberately not exposed on the CLI; a tokenless release is only offered
+    /// to an already-token-authenticated board on loopback.
+    pub fn force_release(&self, id: &Huid) -> Result<bool, ClaimError> {
+        let _lock = self.lock_task(id)?;
+        match fs::remove_file(self.path_for(id)) {
+            Ok(()) => Ok(true),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(err) => Err(ClaimError::Io(err)),
+        }
+    }
 }
 
 const LOCK_STALE_AFTER: Duration = Duration::from_secs(5);
@@ -445,6 +459,20 @@ mod tests {
                 .count()
                 >= 1
         );
+    }
+
+    #[test]
+    fn force_release_ignores_tokens_and_is_idempotent() {
+        let tmp = scratch();
+        let store = store_in(&tmp);
+        let id = Huid::parse("20261109-120000").unwrap();
+
+        store
+            .claim(&id, "agent-3", Duration::from_secs(60), None)
+            .unwrap();
+        assert!(store.force_release(&id).unwrap());
+        assert!(store.read(&id).unwrap().is_none());
+        assert!(!store.force_release(&id).unwrap());
     }
 
     #[test]

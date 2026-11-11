@@ -32,6 +32,9 @@ $ tatrs release 20261109-133012 --token <token>
 - `--ttl` defaults to `2h`; refresh at `ttl/2`.
 - Expiry is the only permission needed to steal: a crashed agent blocks a task for at most the TTL.
 - `release` is compare-and-delete. A stale token cannot delete the new owner's claim.
+- The only tokenless release is a supervisor action from `tatrs serve --allow-actions`
+  (`POST /api/action` with `release-lease`), gated by the board's session token and loopback; see
+  `docs/DECISIONS.md` D-006.
 - Claims disappear from `ready` while live; expired claims are shown by `claim --status` so a human
   can see what died.
 

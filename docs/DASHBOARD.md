@@ -130,12 +130,23 @@ $ tatrs serve --no-browse          # status only, no file browser
 - **Browsing is constrained.** Only paths under the repository root are served; after
   `canonicalize`, a path that escapes the root is refused. `.git`, `target`, `node_modules`,
   `.venv`, `dist`, `build`, and `.tatrs` are never browsable. Files larger than `--max-file`
-  (default 2048 KiB) are refused, and non-UTF-8 files return `415`. There are no mutating routes.
+  (default 2048 KiB) are refused, and non-UTF-8 files return `415`. There are no mutating routes
+  unless `--allow-actions` is set; see below.
   The task view also lists the task folder itself: images become thumbnails served with their real
   content type, text files link into the content pane, and anything else links to the raw bytes.
 - **Access is local.** The default bind is `127.0.0.1`; any other address requires `--allow-remote`.
   The session token is printed in the URL and set as an `HttpOnly` cookie by `/`. It keeps other
   local processes out; like a claim token, it is a capability, not a security boundary.
+
+### Recovery actions
+
+`tatrs serve --allow-actions` (off by default) adds one mutating route, `POST /api/action`, with six
+named intents: `release-lease`, `resume`, `unblock`, `reopen`, `mark-notified`,
+`clear-needs-human`. The task view renders a button only when the current flag or state matches the
+intent, and every button asks for confirmation. There is no body editor, priority field, or
+arbitrary tag input. Each intent maps to one core update (or a supervisor lease release), runs under
+`tasks/.tatrs.lock`, writes a `UPDATED` property, and is a no-op when already applied. See
+`docs/DECISIONS.md` D-006 for the authority and blast radius.
 
 ### Scale
 
@@ -154,8 +165,9 @@ large tree; that is the case that would justify deltas.
 
 ## 6. Non-goals
 
-- **No writes.** The board never closes, claims, or retags. Mutations stay in the CLI/MCP surface
-  where they are explicit and testable.
+- **No free-form writes.** Without `--allow-actions` the board never closes, claims, or retags.
+  With it, only the six named recovery intents (D-006) are available; body text, priority, and
+  arbitrary tags remain CLI/MCP operations.
 - **No history.** The board shows the present. `git log` is the history, and `COMMIT` records where
   a task ended.
 - **No cross-clone view.** Leases are local (D-002), so the board is a view of this clone. A second

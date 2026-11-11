@@ -102,6 +102,7 @@
   .flags { color: #ffb86b; font-size: 12px; }
 
   .meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: -6px 0 16px; }
   dl.facts { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 4px 14px; margin: 0 0 20px; font-size: 13px; }
   dl.facts dt { color: #8b93a3; }
   dl.facts dd { margin: 0; }
@@ -609,6 +610,70 @@ function taskSignature(entry) {
   return entry ? JSON.stringify(entry) : "missing";
 }
 
+// Only named intents the server allowlists, and only for conditions they can
+// actually resolve. No free-form tag or body editing.
+function actionButtons(task, lifecycle) {
+  if (!state.board || state.board.allow_actions !== true) return "";
+  const flags = lifecycle.flags || [];
+  const has = (flag) => flags.includes(flag);
+  const tags = task.tags || [];
+  const buttons = [];
+  const add = (intent, label, message) => {
+    if (!buttons.some((button) => button.intent === intent)) {
+      buttons.push({ intent, label, message });
+    }
+  };
+
+  if (["expired-claim", "stalled", "claim-on-closed-task", "paused-but-claimed"].some(has)) {
+    add("release-lease", "Release lease", "Release the lease on this task?");
+  }
+  if (lifecycle.state === "paused" || has("paused-but-claimed")) {
+    add("resume", "Resume", "Remove the paused tag and resume this task?");
+  }
+  if (lifecycle.state === "waiting" && tags.includes("blocked")) {
+    add("unblock", "Unblock", "Remove the blocked tag from this task?");
+  }
+  if (has("unverified")) {
+    add("reopen", "Reopen", "Reopen this task?");
+  }
+  if (has("notify-owner")) {
+    add("mark-notified", "Mark notified", "Clear the notify tag?");
+  }
+  if (has("needs-human")) {
+    add("clear-needs-human", "Clear needs-human", "Remove the needs-human tag?");
+  }
+
+  if (buttons.length === 0) return "";
+  return `<div class="actions">${buttons.map((button) =>
+    `<button class="btn action" data-intent="${button.intent}" data-confirm="${escapeHtml(button.message)}">${button.label}</button>`
+  ).join("")}</div>`;
+}
+
+function wireActions(task) {
+  for (const button of document.querySelectorAll("#view button.action")) {
+    button.addEventListener("click", async () => {
+      if (!confirm(button.dataset.confirm)) return;
+      button.disabled = true;
+      try {
+        const response = await fetch("/api/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ task: task.id, intent: button.dataset.intent }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || response.statusText);
+        await showTask(task.id);
+      } catch (err) {
+        button.disabled = false;
+        $("view").insertAdjacentHTML(
+          "afterbegin",
+          `<p class="error">${escapeHtml(String(err))}</p>`
+        );
+      }
+    });
+  }
+}
+
 async function showTask(id, options = {}) {
   state.view = "task";
   state.taskId = id;
@@ -639,6 +704,7 @@ async function showTask(id, options = {}) {
         ${lc.ready ? '<span class="tag ok">dispatchable</span>' : ""}
         ${(lc.flags || []).map((flag) => `<span class="tag warn" title="${escapeHtml(FLAG_HELP[flag] || "")}">${escapeHtml(flag)}</span>`).join("")}
       </div>
+      ${actionButtons(task, lc)}
       <dl class="facts">
         <dt>owner</dt><dd>${lc.owner ? escapeHtml(lc.owner) : "—"}</dd>
         <dt>run</dt><dd>${lc.run ? escapeHtml(lc.run) : "—"}</dd>
@@ -653,6 +719,7 @@ async function showTask(id, options = {}) {
       <h2 class="section-title">task folder</h2>
       ${attachments(task.files)}
       <div class="body">${markdown(task.body || "")}</div>`;
+    wireActions(task);
     if (options.silent) $("pane").scrollTop = scroll;
   } catch (err) {
     // A silent refresh must not replace the view with an error on a transient

@@ -1,8 +1,9 @@
 # Add allowlisted recovery actions to the live board
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 100
 - TAGS: agent,ui
+- OWNER: dsh
 
 The board is read-only, so an attention flag tells a human what is wrong and then sends them to a terminal. Supervision should not require a context switch for recovery.
 
@@ -27,8 +28,23 @@ Constraints:
 
 ## Acceptance
 
-- [ ] `POST /api/action` accepts only the allowlisted intents and returns 400 with a JSON error for anything else
-- [ ] without `--allow-actions` there is no mutating route
-- [ ] every intent is idempotent and leaves a `<UPDATED: ...>` marker
-- [ ] D-006 records tokenless lease release and its blast radius
-- [ ] buttons render only for flags they can resolve, with a confirm step
+- [x] `POST /api/action` accepts only the allowlisted intents and returns 400 with a JSON error for anything else
+- [x] without `--allow-actions` there is no mutating route
+- [x] every intent is idempotent and leaves a `<UPDATED: ...>` marker
+- [x] D-006 records tokenless lease release and its blast radius
+- [x] buttons render only for flags they can resolve, with a confirm step
+
+## Progress
+
+2026-11-11:
+
+- `POST /api/action` behind `--allow-actions`; six intents mapped to `Update` or
+  `ClaimStore::force_release`, serialized by `tasks/.tatrs.lock` and saved atomically.
+- Each applied intent writes `UPDATED: <ISO-8601>` (the reserved property), so the change is visible
+  in `git diff`; repeat calls return `changed: false`.
+- Task view renders only matching buttons (`release-lease`, `resume`, `unblock`, `reopen`,
+  `mark-notified`, `clear-needs-human`) and asks `confirm()` before posting.
+- `allow_actions` is part of the snapshot so the UI can stay read-only when the flag is absent.
+- D-006 records the tokenless release authority and blast radius; JSON/DASHBOARD/CLAIMS updated.
+- Tests: unknown intent 400, no-route 404, release idempotence, resume writes `UPDATED`, buttons and
+  confirm appear in the page.

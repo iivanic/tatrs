@@ -10,6 +10,7 @@ options, the choice, the exact behaviour that follows, and what would make us re
 | D-003 | Claim visibility: status command, no published claims | accepted | 2026-11-09 |
 | D-004 | Supervisor states: derive, do not extend `STATUS` | accepted | 2026-11-10 |
 | D-005 | Live board transport: SSE + sweep, loopback only | accepted | 2026-11-10 |
+| D-006 | Board recovery actions and tokenless lease release | accepted | 2026-11-11 |
 
 ---
 
@@ -471,5 +472,75 @@ anything changed.
   snapshots, and consider raising the default `--poll`.
 - `stat` sweeps prove unreliable on a network filesystem: add a checksum of the task file, or fall
   back to `notify` behind a feature flag.
-- The board needs actions (close, claim): keep them out of the HTTP surface and route them through
-  the CLI/MCP so the write path stays audited.
+- The board needs more actions than D-006 allows: keep the allowlist small and route anything that
+  edits prose, priority, or arbitrary tags through the CLI/MCP.
+
+---
+
+## D-006: board recovery actions and tokenless lease release
+
+### Context
+
+A read-only board can only *report* an orphaned lease, a paused task, or a closed task with an
+unchecked criterion. Recovery then means switching to a terminal, finding the task, and typing the
+right update. That is the exact context switch a supervisor should not need, especially when the
+board already knows which flag is wrong.
+
+The risky part is leases. `release` normally requires the token returned by `claim`; a board has no
+token. Releasing someone else's lease is new authority and needs an explicit decision rather than an
+incidental side effect of adding buttons.
+
+### Decision
+
+Add a single mutating route, `POST /api/action`, behind `tatrs serve --allow-actions` (off by
+default). It accepts only a named intent for one task; there is no free-form edit.
+
+| Intent | Effect |
+| - | - |
+| `release-lease` | force-release the task's lease (tokenless, see below) |
+| `resume` | `-paused` |
+| `unblock` | `-blocked` |
+| `reopen` | `open` |
+| `mark-notified` | `-notify` |
+| `clear-needs-human` | `-needs-human` |
+
+Each maps to `tatrs-core::update` or to `ClaimStore::force_release`, runs under
+`tasks/.tatrs.lock`, saves atomically, and writes a `UPDATED` property so the change is visible in
+`git diff`. Repeating an intent that no longer applies is a no-op (`changed: false`).
+
+The UI renders a button only for a flag or state it resolves, and every button asks for
+confirmation before the POST.
+
+### Authority and blast radius
+
+- The route is authorized by the same per-session token as the rest of the board (`HttpOnly`,
+  `SameSite=Strict` cookie, or `?t=`), and the default bind is loopback. `--allow-remote` widens
+  reach; it stays token-gated.
+- **Tokenless release** lets any holder of the session token stop any lease on the clone. It cannot
+  alter task text, priority, arbitrary tags, or close tasks. The worst case is coordination loss:
+  two agents may work the same task; no data is deleted, and the next `check` still sees the lease.
+- Releasing a lease does not notify the running agent. It may continue working while another agent
+  can now claim the same task — the supervisor's action is advisory, not a kill signal.
+- All actions are git-visible: the intent changes a tag or `STATUS`, and `UPDATED` records when.
+  There is no hidden mutation and no server-side state to reconcile.
+- The route is absent (404) unless `--allow-actions` is set; there is no read-only fallback that
+  silently ignores a POST.
+
+### Consequences
+
+**Positive.** A supervisor can clear the four common stalls from the board, with a confirmation,
+without a terminal; every change is reversible with the opposite intent or a normal update. The
+authority is explicit, small, and audited.
+
+**Negative.** The board becomes a write surface with a shared token; a leaked URL lets a third party
+release leases (not edit prose). The intents encode lifecycle assumptions that must stay in sync
+with `lifecycle.rs`; a new flag needs a matching intent or it has no button.
+
+### Revisit if
+
+- A new flag appears that has no safe, named recovery: add one intent and one test, not a generic
+  tag editor.
+- Actions prove too coarse for multi-agent supervision: move them to an authenticated MCP tool with
+  the same allowlist, and retire the HTTP route.
+- Tokenless release is abused in a shared clone: require an `OWNER` match or an explicit
+  `--allow-release` separate from `--allow-actions`.

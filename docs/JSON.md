@@ -244,6 +244,7 @@ Snapshot:
   "version": 7,
   "generated_at": "2026-11-10T22:06:27Z",
   "browse": true,
+  "allow_actions": false,
   "counts": {"total": 9, "received": 3, "in_progress": 1, "paused": 1, "waiting": 2,
              "completed": 1, "refused": 1, "ready": 2, "attention": 1},
   "tasks": [
@@ -258,8 +259,10 @@ Snapshot:
 
 `version` increases on every recomputation, so a reconnecting client can skip a redundant render.
 `browse` mirrors `--no-browse`: when false, `/api/tree` and `/api/file` return `404` and the board
-hides its `files` link. `state` is the derived lifecycle (`docs/DASHBOARD.md`), `declared`
-distinguishes a tag-driven state from an observed one, and `since` is ISO-8601 UTC, best effort.
+hides its `files` link. `allow_actions` mirrors `--allow-actions`: when false, `POST /api/action`
+returns `404` and the task view renders no action buttons. `state` is the derived lifecycle
+(`docs/DASHBOARD.md`), `declared` distinguishes a tag-driven state from an observed one, and
+`since` is ISO-8601 UTC, best effort.
 `also` lists the other lifecycle states that also hold (for example a paused task whose dependency
 is still open), ordered by board rank; counting always uses `state`, so the six state counts
 partition the tree. `rev` is
@@ -280,6 +283,25 @@ so a client can tell whether its cached view of a task is stale. Bodies are excl
 anything else. Entries are sorted by name and exclude `TASK.md` and hidden files.
 `/api/file` serves the image formats inline with their real content type; other binaries return
 `415`, and SVG is treated as text so an attachment cannot script the board's origin.
+
+### Actions (`--allow-actions`)
+
+`POST /api/action` accepts one task and one named intent:
+
+```json
+{"task": "20261109-133012", "intent": "resume"}
+```
+
+```json
+{"schema": 1, "intent": "resume", "changed": true, "update": "-paused",
+ "task": { ... task object ... }}
+```
+
+`release-lease` omits `update` and reports `changed: true` only when a lease file was removed.
+Unknown intents, malformed JSON, or a missing field return `400` with `{"error": "..."}`; an unknown
+task returns `404`; a repository lock held for more than 5 s returns `409`. Repeating an intent that
+no longer applies returns `200` with `changed: false`. The full contract is in `docs/DECISIONS.md`
+D-006.
 
 ## `tatrs check --json`
 
