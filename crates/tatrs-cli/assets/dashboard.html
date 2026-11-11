@@ -88,6 +88,7 @@
   details.legend summary { cursor: pointer; color: #8b93a3; }
   details.legend ul { margin: 8px 0 6px; gap: 8px; }
   details.legend code { background: #1a1f27; padding: 0 5px; border-radius: 4px; font-size: 11px; color: #d2a8ff; }
+  .legend-head { color: #6b7280; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
 
   table.grid { width: 100%; border-collapse: collapse; font-size: 13px; }
   table.grid th {
@@ -222,6 +223,7 @@ const FLAG_HELP = {
   "needs-human": "Tagged needs-human: a decision is required, not more time.",
   "paused-but-claimed": "Tagged paused while a live lease is held; clean one of them up.",
   "claim-on-closed-task": "A lease exists for a task that is already closed.",
+  placeholder: "Still titled `New Task`, with no tags or body: give it a real definition.",
 };
 
 const LEGEND = ["received", "ready", "in_progress", "paused", "waiting", "attention", "completed", "refused"];
@@ -268,9 +270,13 @@ function alsoPills(also) {
 }
 
 function buildLegend() {
-  $("legend-list").innerHTML = LEGEND.map((key) =>
+  const states = LEGEND.map((key) =>
     `<li><code>${label(key)}</code> ${escapeHtml(HELP[key])}</li>`
   ).join("");
+  const flags = Object.entries(FLAG_HELP).map(([flag, help]) =>
+    `<li><code>${escapeHtml(flag)}</code> ${escapeHtml(help)}</li>`
+  ).join("");
+  $("legend-list").innerHTML = `${states}<li class="legend-head">flags</li>${flags}`;
 }
 
 function setConnection(state, text) {

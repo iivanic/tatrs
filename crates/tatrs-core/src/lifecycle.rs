@@ -100,6 +100,8 @@ pub enum Flag {
     PausedButClaimed,
     /// A lease exists for a closed task.
     ClaimOnClosedTask,
+    /// Still the default title, with no tags and no body: nobody can act on it.
+    Placeholder,
 }
 
 impl Flag {
@@ -112,6 +114,7 @@ impl Flag {
             Flag::NeedsHuman => "needs-human",
             Flag::PausedButClaimed => "paused-but-claimed",
             Flag::ClaimOnClosedTask => "claim-on-closed-task",
+            Flag::Placeholder => "placeholder",
         }
     }
 }
@@ -226,6 +229,13 @@ pub fn classify(task: &Task, all: &[Task], claim: Option<&Claim>, ctx: Context) 
 
     if tags.contains("needs-human") {
         flags.push(Flag::NeedsHuman);
+    }
+
+    if tags.is_empty()
+        && task.body.trim().is_empty()
+        && task.title.trim() == crate::task::DEFAULT_TITLE
+    {
+        flags.push(Flag::Placeholder);
     }
 
     if live.is_some() {
@@ -425,6 +435,40 @@ mod tests {
         assert_eq!(lifecycle.state, State::Received);
         assert!(!lifecycle.declared);
         assert!(lifecycle.flags.is_empty());
+    }
+
+    #[test]
+    fn placeholder_task_is_flagged_until_defined() {
+        let mut placeholder = task("20261109-120000", &[], "OPEN");
+        placeholder.title = crate::task::DEFAULT_TITLE.to_owned();
+
+        let lifecycle = classify_one(&placeholder, None, Context::new(0));
+        assert_eq!(lifecycle.state, State::Received);
+        assert_eq!(lifecycle.flags, vec![Flag::Placeholder]);
+
+        let mut renamed = placeholder.clone();
+        renamed.title = "Investigate the flake".to_owned();
+        assert!(
+            !classify_one(&renamed, None, Context::new(0))
+                .flags
+                .contains(&Flag::Placeholder)
+        );
+
+        let mut tagged = placeholder.clone();
+        tagged.tags.push("bug".to_owned());
+        assert!(
+            !classify_one(&tagged, None, Context::new(0))
+                .flags
+                .contains(&Flag::Placeholder)
+        );
+
+        let mut with_body = placeholder.clone();
+        with_body.body = "\nnotes\n".to_owned();
+        assert!(
+            !classify_one(&with_body, None, Context::new(0))
+                .flags
+                .contains(&Flag::Placeholder)
+        );
     }
 
     #[test]

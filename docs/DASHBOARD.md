@@ -77,6 +77,7 @@ Flags are orthogonal to the state. They are the part a human actually acts on.
 | `needs-human` | tagged `needs-human` | a decision is required, not more time |
 | `paused-but-claimed` | `paused` tag and a live lease | two conflicting signals; clean one of them up |
 | `claim-on-closed-task` | a lease exists for a `CLOSED` task | stale lease, or a worker that closed without releasing |
+| `placeholder` | still titled `New Task`, no tags, empty body | nobody can tell what it is; give it a title, tag, or body |
 
 `ready` is not a flag but is computed per task: it is exactly `docs/DECISIONS.md` D-001's dispatch
 rule (`ready::evaluate`), so the board and `tatrs ready` can never disagree.
