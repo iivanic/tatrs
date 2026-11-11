@@ -181,7 +181,7 @@
   </div>
   <nav class="nav">
     <a href="#/">board</a>
-    <a href="#/files">files</a>
+    <a id="files-link" href="#/files">files</a>
   </nav>
 </aside>
 <main id="pane"><div id="view" class="view"><p class="muted">loading…</p></div></main>
@@ -424,6 +424,9 @@ function markdown(source) {
 function renderRail(board) {
   state.board = board;
   const counts = $("counts");
+  const filesLink = $("files-link");
+  if (filesLink) filesLink.style.display = board.browse === false ? "none" : "";
+  if (board.browse === false && state.view === "files" && !$("browse-off")) showFiles();
 
   if (!counts.dataset.built) {
     counts.innerHTML = KEYS.map(([key, text]) =>
@@ -661,6 +664,17 @@ async function showTask(id, options = {}) {
 async function showFiles() {
   state.view = "files";
   state.filter = null;
+  if (!state.board) {
+    $("view").innerHTML = '<p class="muted">waiting for the first snapshot…</p>';
+    return;
+  }
+  // `serve --no-browse` has no tree or file routes; say so instead of a 404.
+  if (state.board.browse === false) {
+    $("view").innerHTML = `
+      <header class="pane-head"><h1>files</h1></header>
+      <p id="browse-off" class="muted">file browser disabled (serve --no-browse)</p>`;
+    return;
+  }
   if (state.tree) return renderFiles("");
   $("view").innerHTML = '<p class="muted">loading…</p>';
   try {
@@ -770,6 +784,12 @@ function renderFiles(filter) {
 async function showFile(path) {
   state.view = "file";
   state.filter = null;
+  if (state.board && state.board.browse === false) {
+    $("view").innerHTML = `
+      <header class="pane-head"><h1>files</h1></header>
+      <p id="browse-off" class="muted">file browser disabled (serve --no-browse)</p>`;
+    return;
+  }
 
   if (/\.(png|jpe?g|gif|webp)$/i.test(path)) {
     $("view").innerHTML = `
@@ -848,7 +868,12 @@ function connect() {
     }
     renderRail(board);
     if (state.view === "board") showBoard(state.filter);
-    if (state.view === "files") state.tree = null;
+    if (state.view === "files") {
+      state.tree = null;
+      // A direct #/files load can happen before the first snapshot; retry once
+      // it arrives, but never loop when browsing is disabled.
+      if (state.board.browse !== false && !$("tree-list")) showFiles();
+    }
     // Task views track their own entry; file views deliberately do not, because
     // a document is a snapshot the reader expects to stay put.
     if (state.view === "task" && state.taskId) {

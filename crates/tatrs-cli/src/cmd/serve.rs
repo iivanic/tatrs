@@ -79,7 +79,13 @@ pub fn run(global: &Global, args: &ServeArgs) -> Result<(), AppError> {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| repo.root().to_string_lossy().into_owned());
 
-    let mut watcher = Watcher::new(repo.clone(), claims_dir, stale_after, project.clone());
+    let mut watcher = Watcher::new(
+        repo.clone(),
+        claims_dir,
+        stale_after,
+        project.clone(),
+        !args.no_browse,
+    );
     watcher.sweep();
     let (version, snapshot) = watcher.rebuild();
 
@@ -239,6 +245,7 @@ impl Entry {
 struct Watcher {
     repo: Repo,
     project: String,
+    browse: bool,
     tasks_dir: PathBuf,
     claims_dir: PathBuf,
     stale_after: i64,
@@ -252,11 +259,18 @@ struct Watcher {
 }
 
 impl Watcher {
-    fn new(repo: Repo, claims_dir: PathBuf, stale_after: i64, project: String) -> Self {
+    fn new(
+        repo: Repo,
+        claims_dir: PathBuf,
+        stale_after: i64,
+        project: String,
+        browse: bool,
+    ) -> Self {
         let tasks_dir = repo.tasks_dir();
         Self {
             repo,
             project,
+            browse,
             tasks_dir,
             claims_dir,
             stale_after,
@@ -442,6 +456,7 @@ impl Watcher {
             "version": self.version,
             "generated_at": time::format_iso(now),
             "project": self.project.as_str(),
+            "browse": self.browse,
             "counts": counts,
             "tasks": entries,
         });

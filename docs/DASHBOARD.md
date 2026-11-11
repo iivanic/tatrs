@@ -116,6 +116,8 @@ $ tatrs serve --no-browse          # status only, no file browser
 - **The board table is the working list.** One search box filters id, title, owner, tag, and flag
   text; every column header sorts, and the default is newest first (HUID descending). Search text
   and sort order live in client state, so a live refresh repaints rows without stealing focus.
+- **No dead links.** `--no-browse` removes the `files` link from the rail, and opening `#/files`
+  directly shows "file browser disabled" instead of a 404 from `/api/tree`.
 - **The page never blocks the stream.** The status rail is a fixed DOM and updates in place; the
   content pane is routed by URL hash (`#/task/<id>`, `#/file/<path>`, `#/files`) and is only
   re-rendered when the route changes. Reading code while counts tick is the point. An open **task

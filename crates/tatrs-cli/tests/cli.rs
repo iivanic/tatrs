@@ -1029,6 +1029,7 @@ fn serve_exposes_a_read_only_board() {
 
     let status = http_json(&http_get(&addr, &format!("/api/status?t={token}")));
     assert_eq!(status["schema"], 1);
+    assert_eq!(status["browse"], true);
     assert_eq!(status["counts"]["paused"], 1);
     assert_eq!(status["counts"]["total"], 1);
     assert_eq!(status["tasks"][0]["state"], "paused");
@@ -1097,6 +1098,56 @@ fn serve_exposes_a_read_only_board() {
     std::thread::sleep(std::time::Duration::from_millis(600));
     let updated = http_json(&http_get(&addr, &format!("/api/status?t={token}")));
     assert!(updated["version"].as_u64() > status["version"].as_u64());
+
+    child.kill().unwrap();
+    let _ = child.wait();
+}
+
+#[test]
+fn serve_no_browse_has_no_file_routes_and_says_so() {
+    let tmp = scratch();
+    init(tmp.path());
+    create(tmp.path(), "Task", &["ui"], 10);
+
+    let mut child = tatrs()
+        .current_dir(tmp.path())
+        .args([
+            "serve",
+            "--port",
+            "0",
+            "--poll",
+            "200ms",
+            "--no-browse",
+            "--json",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut line = String::new();
+    stdout.read_line(&mut line).unwrap();
+    let announced: Value = serde_json::from_str(line.trim()).unwrap();
+    let url = announced["url"].as_str().unwrap().to_owned();
+    let addr = url
+        .strip_prefix("http://")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    let token = url.split("t=").nth(1).unwrap().to_owned();
+
+    let status = http_json(&http_get(&addr, &format!("/api/status?t={token}")));
+    assert_eq!(status["browse"], false);
+
+    let tree = http_get(&addr, &format!("/api/tree?t={token}"));
+    assert!(tree.starts_with("HTTP/1.1 404"), "{tree}");
+
+    let page = http_get(&addr, &format!("/?t={token}"));
+    assert!(page.contains("id=\"files-link\""), "{page}");
+    assert!(page.contains("browse === false"), "{page}");
 
     child.kill().unwrap();
     let _ = child.wait();
