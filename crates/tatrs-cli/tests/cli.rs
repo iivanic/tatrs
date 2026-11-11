@@ -1200,6 +1200,7 @@ fn serve_exposes_a_read_only_board() {
     assert_eq!(status["counts"]["total"], 1);
     assert_eq!(status["tasks"][0]["state"], "paused");
     assert_eq!(status["tasks"][0]["declared"], true);
+    assert!(status["tasks"][0]["since"].is_string());
     assert_eq!(status["tasks"][0]["also"], serde_json::json!([]));
 
     // Attachments next to TASK.md are listed and served by kind.
@@ -1250,6 +1251,14 @@ fn serve_exposes_a_read_only_board() {
     assert!(
         page.contains("href=\"#/\" title=\"back to the board\""),
         "brand must link to the board"
+    );
+    assert!(
+        page.contains("latest activity first"),
+        "the board must default to latest activity"
+    );
+    assert!(
+        page.contains("\"activity\""),
+        "the activity column must be present"
     );
     assert!(page.contains("← task"), "task back link missing");
     assert!(page.contains("← files"), "files back link missing");

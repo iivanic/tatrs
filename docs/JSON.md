@@ -262,7 +262,8 @@ Snapshot:
 hides its `files` link. `allow_actions` mirrors `--allow-actions`: when false, `POST /api/action`
 returns `404` and the task view renders no action buttons. `state` is the derived lifecycle
 (`docs/DASHBOARD.md`), `declared` distinguishes a tag-driven state from an observed one, and
-`since` is ISO-8601 UTC, best effort.
+`since` is ISO-8601 UTC, best effort: the last observed change to `TASK.md`, which the board uses as
+its default sort.
 `also` lists the other lifecycle states that also hold (for example a paused task whose dependency
 is still open), ordered by board rank; counting always uses `state`, so the six state counts
 partition the tree. `rev` is

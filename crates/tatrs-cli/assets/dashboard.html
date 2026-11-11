@@ -18,6 +18,7 @@
   a:hover { text-decoration: underline; }
   .mono, code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .muted { color: #8b93a3; font-size: 12px; }
+  .nowrap { white-space: nowrap; }
   .error { color: #ff8d8d; }
 
   #rail {
@@ -230,6 +231,7 @@ const LEGEND = ["received", "ready", "in_progress", "paused", "waiting", "attent
 
 const SORT_COLUMNS = [
   ["state", "state"],
+  ["activity", "activity"],
   ["id", "id"],
   ["priority", "prio"],
   ["title", "title"],
@@ -242,7 +244,7 @@ const STATE_ORDER = Object.fromEntries(KEYS.map(([key], index) => [key, index]))
 
 const state = {
   board: null, tree: null, openTree: new Set(), view: "", filter: null, taskId: null,
-  taskSignature: null, taskRequest: 0, query: "", sort: { key: "id", dir: "desc" }, boardFilter: null,
+  taskSignature: null, taskRequest: 0, query: "", sort: { key: "activity", dir: "desc" }, boardFilter: null,
   lastRoute: null,
 };
 
@@ -495,6 +497,7 @@ function filterTasks(tasks, filter) {
 function row(task) {
   return `<tr class="${task.declared ? "declared" : ""}" onclick="location.hash='#/task/${task.id}'">` +
     `<td>${pill(task.state)}${alsoPills(task.also)}</td>` +
+    `<td class="muted nowrap" title="${escapeHtml(task.since || "")}">${task.since ? timeAgo(task.since) : "—"}</td>` +
     `<td class="mono muted">${task.id}</td>` +
     `<td class="num">${task.priority}</td>` +
     `<td>${escapeHtml(task.title)}</td>` +
@@ -505,6 +508,7 @@ function row(task) {
 
 const SORT_VALUE = {
   state: (task) => STATE_ORDER[task.state] ?? 99,
+  activity: (task) => (task.since ? Date.parse(task.since) : 0) || 0,
   id: (task) => task.id,
   priority: (task) => task.priority,
   title: (task) => task.title.toLowerCase(),
@@ -547,7 +551,7 @@ function paintBoard() {
   const body = $("board-body");
   if (body) {
     body.innerHTML = tasks.map(row).join("") ||
-      '<tr><td colspan="6" class="empty">no matching tickets</td></tr>';
+      '<tr><td colspan="7" class="empty">no matching tickets</td></tr>';
   }
   for (const button of document.querySelectorAll("#view button.sort")) {
     const active = button.dataset.key === state.sort.key;
@@ -578,7 +582,7 @@ function showBoard(filter) {
       <div class="toolbar">
         <input id="board-search" class="filter" type="search" autocomplete="off"
           placeholder="search id, title, owner, tag, flag" value="${escapeHtml(state.query)}">
-        <span class="hint">newest first · click a column to sort</span>
+        <span class="hint">latest activity first · click a column to sort</span>
       </div>
       <table class="grid">
         <thead><tr>${SORT_COLUMNS.map(([key, text]) =>
@@ -714,7 +718,7 @@ async function showTask(id, options = {}) {
       <dl class="facts">
         <dt>owner</dt><dd>${lc.owner ? escapeHtml(lc.owner) : "—"}</dd>
         <dt>run</dt><dd>${lc.run ? escapeHtml(lc.run) : "—"}</dd>
-        <dt>since</dt><dd>${lc.since ? escapeHtml(lc.since) : "—"}</dd>
+        <dt>since</dt><dd title="${escapeHtml(lc.since || "")}">${lc.since ? timeAgo(lc.since) : "—"}</dd>
         <dt>priority</dt><dd>${task.priority}</dd>
         <dt>tags</dt><dd>${task.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join(" ") || "—"}</dd>
         <dt>acceptance</dt><dd>${acceptance.present
