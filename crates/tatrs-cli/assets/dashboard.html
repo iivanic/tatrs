@@ -30,7 +30,9 @@
     background: #0b0d11;
   }
   .brand { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-  .brand-project { display: inline-flex; align-items: baseline; gap: 4px; min-width: 0; }
+  .brand-project { display: inline-flex; align-items: baseline; gap: 4px; min-width: 0; color: inherit; }
+  .brand-project:hover { text-decoration: none; }
+  .brand-project:hover #project { color: #fff; }
   .brand-tool { font-size: 11px; letter-spacing: 0.04em; color: #8b93a3; }
   #project { font-size: 16px; color: #e6e9ef; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .back { font-size: 12px; color: #8b93a3; border: 1px solid #232933; border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
@@ -132,6 +134,15 @@
     background: #11161d; border: 1px solid #232933; color: inherit; font: inherit;
   }
   .filter:focus { outline: 1px solid #2f5f9e; }
+  .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .toolbar .filter { margin: 0; flex: 1 1 280px; max-width: 460px; }
+  .toolbar .hint { color: #6b7280; font-size: 11px; }
+  table.grid th button.sort {
+    background: none; border: 0; padding: 0; color: inherit; font: inherit;
+    letter-spacing: inherit; text-transform: inherit; cursor: pointer;
+  }
+  table.grid th button.sort:hover { color: #e6e9ef; }
+  table.grid th button.sort .arrow { color: #7fb0ff; margin-left: 2px; }
   ul.tree { display: block; gap: 0; font-size: 13px; }
   ul.tree ul { display: block; margin: 2px 0 2px 8px; padding-left: 12px; border-left: 1px solid #1d222a; }
   ul.tree li { list-style: none; }
@@ -150,7 +161,7 @@
 <body>
 <aside id="rail">
   <div class="brand">
-    <span class="brand-project"><span class="brand-tool">tatrs@</span><span id="project">workspace</span></span>
+    <a class="brand-project" href="#/" title="back to the board"><span class="brand-tool">tatrs@</span><span id="project">workspace</span></a>
     <span class="muted" role="status" aria-live="polite"><i id="dot" class="dot" role="img" aria-label="connecting" title="connecting"></i><span id="updated">connecting…</span></span>
   </div>
   <div class="derived" title="tatrs derives these states on read from STATUS, live leases, DEPENDS and reserved tags. Nothing is written to TASK.md.">derived · not stored</div>
@@ -180,10 +191,10 @@
 
 const KEYS = [
   ["received", "received"],
+  ["ready", "ready"],
   ["in_progress", "in progress"],
   ["paused", "paused"],
   ["waiting", "waiting"],
-  ["ready", "ready"],
   ["attention", "attention"],
   ["completed", "completed"],
   ["refused", "refused"],
@@ -212,9 +223,24 @@ const FLAG_HELP = {
   "claim-on-closed-task": "A lease exists for a task that is already closed.",
 };
 
-const LEGEND = ["received", "in_progress", "paused", "waiting", "completed", "refused", "ready", "attention"];
+const LEGEND = ["received", "ready", "in_progress", "paused", "waiting", "attention", "completed", "refused"];
 
-const state = { board: null, tree: null, openTree: new Set(), view: "", filter: null, taskId: null, taskSignature: null, taskRequest: 0 };
+const SORT_COLUMNS = [
+  ["state", "state"],
+  ["id", "id"],
+  ["priority", "prio"],
+  ["title", "title"],
+  ["owner", "owner"],
+  ["flags", "flags"],
+];
+
+// Same order as the counts rail, so the sort agrees with what readers see.
+const STATE_ORDER = Object.fromEntries(KEYS.map(([key], index) => [key, index]));
+
+const state = {
+  board: null, tree: null, openTree: new Set(), view: "", filter: null, taskId: null,
+  taskSignature: null, taskRequest: 0, query: "", sort: { key: "id", dir: "desc" }, boardFilter: null,
+};
 
 const $ = (id) => document.getElementById(id);
 
@@ -466,24 +492,108 @@ function row(task) {
     "</tr>";
 }
 
+const SORT_VALUE = {
+  state: (task) => STATE_ORDER[task.state] ?? 99,
+  id: (task) => task.id,
+  priority: (task) => task.priority,
+  title: (task) => task.title.toLowerCase(),
+  owner: (task) => (task.owner || "").toLowerCase(),
+  flags: (task) => (task.flags || []).join(","),
+};
+
+function matchesQuery(task, needle) {
+  if (!needle) return true;
+  const haystack = [
+    task.id, task.title, task.owner || "", task.state,
+    (task.tags || []).join(" "), (task.flags || []).join(" "),
+  ].join(" ").toLowerCase();
+  return haystack.includes(needle);
+}
+
+function boardTasks() {
+  if (!state.board) return [];
+  const needle = state.query.trim().toLowerCase();
+  const value = SORT_VALUE[state.sort.key] || SORT_VALUE.id;
+  const factor = state.sort.dir === "asc" ? 1 : -1;
+  return filterTasks(state.board.tasks, state.filter)
+    .filter((task) => matchesQuery(task, needle))
+    .sort((left, right) => {
+      const a = value(left);
+      const b = value(right);
+      if (a < b) return -1 * factor;
+      if (a > b) return 1 * factor;
+      return left.id.localeCompare(right.id);
+    });
+}
+
+function paintBoard() {
+  if (!state.board) return;
+  const tasks = boardTasks();
+  const count = $("board-count");
+  if (count) {
+    count.textContent = `${tasks.length} task${tasks.length === 1 ? "" : "s"} · v${state.board.version}`;
+  }
+  const body = $("board-body");
+  if (body) {
+    body.innerHTML = tasks.map(row).join("") ||
+      '<tr><td colspan="6" class="empty">no matching tickets</td></tr>';
+  }
+  for (const button of document.querySelectorAll("#view button.sort")) {
+    const active = button.dataset.key === state.sort.key;
+    button.dataset.active = String(active);
+    const arrow = button.querySelector(".arrow");
+    if (arrow) arrow.textContent = active ? (state.sort.dir === "asc" ? " ▲" : " ▼") : "";
+  }
+}
+
 function showBoard(filter) {
+  const nextFilter = filter || null;
   state.view = "board";
-  state.filter = filter || null;
-  const board = state.board;
-  if (!board) {
+  state.filter = nextFilter;
+  if (!state.board) {
     $("view").innerHTML = '<p class="muted">waiting for the first snapshot…</p>';
     return;
   }
-  const tasks = filterTasks(board.tasks, filter);
-  $("view").innerHTML = `
-    <header class="pane-head">
-      <h1>${filter ? escapeHtml(label(filter)) : "board"}</h1>
-      <span class="muted">${tasks.length} task${tasks.length === 1 ? "" : "s"} · v${board.version}</span>
-    </header>
-    <table class="grid">
-      <thead><tr><th>state</th><th>id</th><th>prio</th><th>title</th><th>owner</th><th>flags</th></tr></thead>
-      <tbody>${tasks.map(row).join("")}</tbody>
-    </table>`;
+
+  // Rebuild the shell only when the view or filter changes; SSE refreshes just
+  // repaint rows, so typing in the search box never loses focus.
+  if (state.boardFilter !== nextFilter || !$("board-body")) {
+    state.boardFilter = nextFilter;
+    $("view").innerHTML = `
+      <header class="pane-head">
+        <h1>${nextFilter ? escapeHtml(label(nextFilter)) : "board"}</h1>
+        <span class="muted" id="board-count"></span>
+      </header>
+      <div class="toolbar">
+        <input id="board-search" class="filter" type="search" autocomplete="off"
+          placeholder="search id, title, owner, tag, flag" value="${escapeHtml(state.query)}">
+        <span class="hint">newest first · click a column to sort</span>
+      </div>
+      <table class="grid">
+        <thead><tr>${SORT_COLUMNS.map(([key, text]) =>
+          `<th><button class="sort" data-key="${key}">${text}<span class="arrow"></span></button></th>`
+        ).join("")}</tr></thead>
+        <tbody id="board-body"></tbody>
+      </table>`;
+
+    $("board-search").addEventListener("input", (event) => {
+      state.query = event.target.value;
+      paintBoard();
+    });
+    for (const button of document.querySelectorAll("#view button.sort")) {
+      button.addEventListener("click", () => {
+        const key = button.dataset.key;
+        if (state.sort.key === key) {
+          state.sort.dir = state.sort.dir === "asc" ? "desc" : "asc";
+        } else {
+          state.sort = { key, dir: key === "id" || key === "priority" ? "desc" : "asc" };
+        }
+        paintBoard();
+      });
+    }
+  }
+
+  paintBoard();
 }
 
 function boardEntry(id) {

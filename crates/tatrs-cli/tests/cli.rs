@@ -1070,6 +1070,16 @@ fn serve_exposes_a_read_only_board() {
 
     let page = http_get(&addr, &format!("/?t={token}"));
     assert!(page.contains("live board"), "{page}");
+    assert!(page.contains("id=\"board-search\""), "search box missing");
+    assert!(page.contains("class=\"sort\""), "sortable headers missing");
+    assert!(
+        page.contains("[\"received\", \"ready\", \"in_progress\""),
+        "ready must be the second state"
+    );
+    assert!(
+        page.contains("href=\"#/\" title=\"back to the board\""),
+        "brand must link to the board"
+    );
 
     let escape = http_get(
         &addr,

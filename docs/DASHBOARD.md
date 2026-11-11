@@ -113,6 +113,9 @@ $ tatrs serve --no-browse          # status only, no file browser
 - **Push** is `text/event-stream`. Each change bumps `version` and broadcasts one `board` event
   carrying the whole snapshot; a 15-second keepalive comment keeps proxies from closing the stream.
   Clients use `EventSource`, which reconnects automatically after a restart.
+- **The board table is the working list.** One search box filters id, title, owner, tag, and flag
+  text; every column header sorts, and the default is newest first (HUID descending). Search text
+  and sort order live in client state, so a live refresh repaints rows without stealing focus.
 - **The page never blocks the stream.** The status rail is a fixed DOM and updates in place; the
   content pane is routed by URL hash (`#/task/<id>`, `#/file/<path>`, `#/files`) and is only
   re-rendered when the route changes. Reading code while counts tick is the point. An open **task
