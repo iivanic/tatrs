@@ -224,10 +224,11 @@ Long-running and read-only. With `--json` it prints one object and keeps serving
  "browse": true, "poll_ms": 1000}
 ```
 
-The URL carries a per-session capability token; opening it sets an `HttpOnly` cookie so the page's
-fetches and the event stream authenticate. Every route also accepts `?t=<token>`, which the page uses
-for the event stream so that a dropped or foreign cookie cannot break reconnects. All routes are
-`GET` and require the token:
+The URL carries a per-clone capability token, kept `0600` in the state dir beside the claims; opening
+it sets an `HttpOnly` cookie so the page's fetches and the event stream authenticate, and the token
+survives a restart. Every route also accepts `?t=<token>`, which the page uses for the event stream
+so that a dropped or foreign cookie cannot break reconnects. All routes are `GET` and require the
+token:
 
 | Route | Body |
 | - | - |

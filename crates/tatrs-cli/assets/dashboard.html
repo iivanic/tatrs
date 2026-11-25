@@ -328,7 +328,7 @@ function attachments(files) {
     if (file.kind === "image") {
       return `<figure class="thumb">
         <a href="${href}" title="${escapeHtml(file.name)}">
-          <img src="/api/file?path=${encodeURIComponent(file.path)}" alt="${escapeHtml(file.name)}" loading="lazy">
+          <img src="${api("/api/file?path=" + encodeURIComponent(file.path))}" alt="${escapeHtml(file.name)}" loading="lazy">
         </a>
         <figcaption><span class="mono">${escapeHtml(file.name)}</span> <span class="muted">${formatBytes(file.size)}</span></figcaption>
       </figure>`;
@@ -689,7 +689,7 @@ function wireActions(task) {
       if (!confirm(button.dataset.confirm)) return;
       button.disabled = true;
       try {
-        const response = await fetch("/api/action", {
+        const response = await fetch(api("/api/action"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ task: task.id, intent: button.dataset.intent }),
@@ -715,7 +715,7 @@ async function showTask(id, options = {}) {
   const request = (state.taskRequest += 1);
   if (!options.silent) $("view").innerHTML = '<p class="muted">loading…</p>';
   try {
-    const response = await fetch("/api/task/" + encodeURIComponent(id));
+    const response = await fetch(api("/api/task/" + encodeURIComponent(id)));
     if (!response.ok) throw new Error((await response.text()).trim() || response.statusText);
     const task = await response.json();
     if (request !== state.taskRequest) return;
@@ -780,7 +780,7 @@ async function showFiles() {
   if (state.tree) return renderFiles("");
   $("view").innerHTML = '<p class="muted">loading…</p>';
   try {
-    const response = await fetch("/api/tree");
+    const response = await fetch(api("/api/tree"));
     if (!response.ok) throw new Error((await response.text()).trim() || response.statusText);
     const payload = await response.json();
     state.tree = payload.entries || [];
@@ -909,13 +909,13 @@ async function showFile(path, from) {
         <h1 class="mono">${escapeHtml(path)}</h1>
         <span class="muted">image</span>
       </header>
-      <img class="screenshot" src="/api/file?path=${encodeURIComponent(path)}" alt="${escapeHtml(path)}">`;
+      <img class="screenshot" src="${api("/api/file?path=" + encodeURIComponent(path))}" alt="${escapeHtml(path)}">`;
     return;
   }
 
   $("view").innerHTML = '<p class="muted">loading…</p>';
   try {
-    const response = await fetch("/api/file?path=" + encodeURIComponent(path));
+    const response = await fetch(api("/api/file?path=" + encodeURIComponent(path)));
     if (!response.ok) throw new Error((await response.text()).trim() || response.statusText);
     const text = await response.text();
     const isMarkdown = /\.(md|markdown)$/i.test(path);
@@ -974,16 +974,17 @@ function route() {
 const RETRY_BASE = 2000;
 const RETRY_MAX = 30000;
 
-// The token rides in the query as well as in the cookie: cookies are shared by
-// every server on 127.0.0.1 regardless of port, so a stale cookie from another
-// `tatrs serve` would otherwise make the stream fail with 401 forever.
-function streamQuery() {
+// Cookies are shared by every server on 127.0.0.1 regardless of port, so a
+// stale `tatrs_token` from another clone would 401 this page. Every request
+// carries the token from this page's own URL instead; the cookie is a fallback.
+function api(path) {
   const token = new URLSearchParams(location.search).get("t");
-  return token ? "?t=" + encodeURIComponent(token) : "";
+  if (!token) return path;
+  return path + (path.includes("?") ? "&" : "?") + "t=" + encodeURIComponent(token);
 }
 
 function connect() {
-  const source = new EventSource("/events" + streamQuery());
+  const source = new EventSource(api("/events"));
   state.source = source;
   source.addEventListener("board", (event) => {
     let board;
@@ -1036,7 +1037,7 @@ function scheduleReconnect(source) {
     reconnectTimer = null;
     if (state.source !== source) return;
     try {
-      const response = await fetch("/api/status" + streamQuery());
+      const response = await fetch(api("/api/status"));
       if (response.status === 401) {
         // The server runs with another token, which only the URL it printed
         // can fix. Say so, and keep probing slowly in case it changes back.

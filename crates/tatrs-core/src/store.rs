@@ -125,6 +125,16 @@ impl Repo {
         format!("tasks/{}/TASK.md", id.as_str())
     }
 
+    /// Ephemeral per-clone state (claims, the board token): the git common dir
+    /// when there is one, otherwise `tasks/.tatrs`, which `tatrs init` ignores.
+    /// It is never part of the tracked tree.
+    pub fn state_dir(&self) -> PathBuf {
+        match common_git_dir(&self.root) {
+            Some(git_dir) => git_dir.join("tatrs"),
+            None => self.tasks_dir().join(".tatrs"),
+        }
+    }
+
     /// Path relative to the repository root, forward-slash separated.
     pub fn rel_path(&self, path: &Path) -> String {
         path.strip_prefix(&self.root)
@@ -391,6 +401,34 @@ fn lock_is_stale(path: &Path) -> bool {
         .and_then(|modified| modified.elapsed().ok())
         .map(|age| age > LOCK_STALE_AFTER)
         .unwrap_or(false)
+}
+
+/// The git common dir of `root`, following a `gitdir:` file so a linked
+/// worktree resolves to the shared `.git` rather than its own administrative
+/// directory.
+fn common_git_dir(root: &Path) -> Option<PathBuf> {
+    let dot_git = root.join(".git");
+    if dot_git.is_dir() {
+        return Some(dot_git);
+    }
+    if !dot_git.is_file() {
+        return None;
+    }
+
+    let contents = fs::read_to_string(&dot_git).ok()?;
+    let line = contents
+        .lines()
+        .find_map(|line| line.strip_prefix("gitdir:"))?
+        .trim();
+    let git_dir = fs::canonicalize(root.join(line)).ok()?;
+
+    if let Ok(relative) = fs::read_to_string(git_dir.join("commondir"))
+        && let Ok(common) = fs::canonicalize(git_dir.join(relative.trim()))
+    {
+        return Some(common);
+    }
+
+    git_dir.parent()?.parent().map(Path::to_path_buf)
 }
 
 /// Write `contents` to `path` atomically: a temp file in the same directory is

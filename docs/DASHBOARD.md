@@ -143,8 +143,11 @@ $ tatrs serve --no-browse          # status only, no file browser
   The task view also lists the task folder itself: images become thumbnails served with their real
   content type, text files link into the content pane, and anything else links to the raw bytes.
 - **Access is local.** The default bind is `127.0.0.1`; any other address requires `--allow-remote`.
-  The session token is printed in the URL and set as an `HttpOnly` cookie by `/`. It keeps other
-  local processes out; like a claim token, it is a capability, not a security boundary.
+  The token is printed in the URL, set as an `HttpOnly` cookie by `/`, and also accepted as `?t=…`.
+  It is per clone and stored `0600` in the state dir beside the claims (`serve.token`), so an open
+  board reconnects after a restart and the printed URL survives a rebuild; delete that file to
+  rotate it, and `--read-only` never writes it. It keeps other local processes out; like a claim
+  token, it is a capability, not a security boundary.
 
 ### Recovery actions
 

@@ -1300,6 +1300,10 @@ fn serve_exposes_a_read_only_board() {
         page.contains("EventSource.CLOSED"),
         "the page must recover when the browser gives up on the stream"
     );
+    assert!(
+        page.contains("function api("),
+        "every page request must carry the page's own token"
+    );
 
     let escape = http_get(
         &addr,
@@ -1317,6 +1321,85 @@ fn serve_exposes_a_read_only_board() {
     std::thread::sleep(std::time::Duration::from_millis(600));
     let updated = http_json(&http_get(&addr, &format!("/api/status?t={token}")));
     assert!(updated["version"].as_u64() > status["version"].as_u64());
+
+    child.kill().unwrap();
+    let _ = child.wait();
+}
+
+/// Spawn `serve` on a free port and return the child, its `addr:port`, and the
+/// token from the announced URL.
+fn start_serve(dir: &Path, extra: &[&str]) -> (std::process::Child, String, String) {
+    let mut args = vec!["serve", "--port", "0", "--poll", "200ms", "--json"];
+    args.extend_from_slice(extra);
+    let mut child = tatrs()
+        .current_dir(dir)
+        .args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut line = String::new();
+    stdout.read_line(&mut line).unwrap();
+    let announced: Value = serde_json::from_str(line.trim()).unwrap();
+    let url = announced["url"].as_str().unwrap().to_owned();
+    let addr = url
+        .strip_prefix("http://")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    let token = url.split("t=").nth(1).unwrap().to_owned();
+    (child, addr, token)
+}
+
+#[test]
+fn serve_token_survives_a_restart() {
+    let tmp = scratch();
+    init(tmp.path());
+    create(tmp.path(), "Live", &["bug"], 10);
+
+    let (mut first, _, first_token) = start_serve(tmp.path(), &[]);
+    first.kill().unwrap();
+    let _ = first.wait();
+
+    // A page opened against the first process must reconnect to the second.
+    let (mut second, addr, second_token) = start_serve(tmp.path(), &[]);
+    assert_eq!(
+        first_token, second_token,
+        "token must not change on restart"
+    );
+
+    // The token lives in the per-clone state dir, invisible to the file browser.
+    let state = tmp.path().join("tasks/.tatrs/serve.token");
+    assert_eq!(
+        std::fs::read_to_string(&state).unwrap().trim(),
+        first_token,
+        "the token must be persisted where claims live"
+    );
+    let blocked = http_get(
+        &addr,
+        &format!("/api/file?path=tasks%2F.tatrs%2Fserve.token&t={second_token}"),
+    );
+    assert!(blocked.starts_with("HTTP/1.1 403"), "{blocked}");
+
+    second.kill().unwrap();
+    let _ = second.wait();
+}
+
+#[test]
+fn serve_read_only_does_not_persist_a_token() {
+    let tmp = scratch();
+    init(tmp.path());
+    create(tmp.path(), "Live", &["bug"], 10);
+
+    let (mut child, _, token) = start_serve(tmp.path(), &["--read-only"]);
+    assert_eq!(token.len(), 16);
+    assert!(
+        !tmp.path().join("tasks/.tatrs/serve.token").exists(),
+        "--read-only must not write to the state dir"
+    );
 
     child.kill().unwrap();
     let _ = child.wait();

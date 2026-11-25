@@ -37,6 +37,8 @@ use crate::error::AppError;
 
 const DASHBOARD: &str = include_str!("../../assets/dashboard.html");
 const TOKEN_COOKIE: &str = "tatrs_token";
+/// Board token file inside the per-clone state dir; see [`board_token`].
+const TOKEN_FILE: &str = "serve.token";
 const MAX_TREE_ENTRIES: usize = 20_000;
 /// Idle time on a `text/event-stream` before a keepalive comment is written.
 const KEEPALIVE: Duration = Duration::from_secs(15);
@@ -128,7 +130,11 @@ pub fn run(global: &Global, args: &ServeArgs) -> Result<(), AppError> {
     let addr = listener
         .local_addr()
         .map_err(|err| AppError::Runtime(err.to_string()))?;
-    let token = session_token();
+    let token = if global.read_only {
+        session_token()
+    } else {
+        board_token(&repo)
+    };
     let url = format!("http://{addr}/?t={token}");
 
     if global.json {
@@ -1315,6 +1321,35 @@ fn session_token() -> String {
     hasher.write_u128(nanos);
     hasher.write_u32(std::process::id());
     format!("{:016x}", hasher.finish())
+}
+
+/// The board token is per clone, not per process: it lives beside the claim
+/// store so a page that is already open reconnects after `tatrs serve` is
+/// restarted, and the printed URL keeps working across rebuilds. Delete the
+/// file to rotate it. Failing to persist (a read-only checkout, say) is not an
+/// error: the board still serves, it just gets a fresh token next time.
+fn board_token(repo: &Repo) -> String {
+    let path = repo.state_dir().join(TOKEN_FILE);
+    if let Some(token) = read_token(&path) {
+        return token;
+    }
+    let fresh = session_token();
+    if let Some(dir) = path.parent()
+        && std::fs::create_dir_all(dir).is_ok()
+        && tatrs_core::store::write_atomic(&path, &format!("{fresh}\n")).is_ok()
+    {
+        // Two servers can race here; the file wins so every later restart and
+        // every page agree on one token.
+        return read_token(&path).unwrap_or(fresh);
+    }
+    fresh
+}
+
+fn read_token(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let token = text.trim();
+    (!token.is_empty() && token.len() <= 64 && token.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| token.to_owned())
 }
 
 #[cfg(test)]

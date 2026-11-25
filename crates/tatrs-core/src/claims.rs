@@ -80,13 +80,8 @@ impl ClaimStore {
     /// Resolve the store for a repository: the git common dir when available,
     /// otherwise the fallback inside `tasks/`.
     pub fn locate(repo: &Repo) -> Self {
-        match common_git_dir(repo.root()) {
-            Some(git_dir) => Self {
-                dir: git_dir.join("tatrs").join("claims"),
-            },
-            None => Self {
-                dir: repo.tasks_dir().join(".tatrs").join("claims"),
-            },
+        Self {
+            dir: repo.state_dir().join("claims"),
         }
     }
 
@@ -330,32 +325,6 @@ fn new_token() -> String {
     let now = time::now_secs();
     let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("{now:016x}{counter:04x}{:04x}", std::process::id() & 0xffff)
-}
-
-/// Resolve the git common directory, including linked worktrees.
-fn common_git_dir(root: &Path) -> Option<PathBuf> {
-    let dot_git = root.join(".git");
-    if dot_git.is_dir() {
-        return Some(dot_git);
-    }
-    if !dot_git.is_file() {
-        return None;
-    }
-
-    let contents = fs::read_to_string(&dot_git).ok()?;
-    let line = contents
-        .lines()
-        .find_map(|line| line.strip_prefix("gitdir:"))?
-        .trim();
-    let git_dir = fs::canonicalize(root.join(line)).ok()?;
-
-    if let Ok(relative) = fs::read_to_string(git_dir.join("commondir"))
-        && let Ok(common) = fs::canonicalize(git_dir.join(relative.trim()))
-    {
-        return Some(common);
-    }
-
-    git_dir.parent()?.parent().map(Path::to_path_buf)
 }
 
 #[cfg(test)]

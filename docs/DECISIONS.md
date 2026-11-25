@@ -443,9 +443,13 @@ the result is serialized once, versioned, and published to every subscriber thro
 
 - **Default bind** `127.0.0.1:7787` (`--port 0` picks a free port). Any non-loopback address is
   refused unless `--allow-remote` is passed.
-- **Token.** A per-session capability token is printed in the URL (`/?t=…`); `/` sets it as an
-  `HttpOnly; SameSite=Strict` cookie so `EventSource` and `fetch` authenticate. Requests without it
-  get `401`.
+- **Token.** A per-clone capability token is printed in the URL (`/?t=…`); `/` sets it as an
+  `HttpOnly; SameSite=Strict` cookie so `EventSource` and `fetch` authenticate, and every route also
+  accepts `?t=…` because cookies are shared by every server on `127.0.0.1` regardless of port.
+  Requests without it get `401`. The token is generated once and stored `0600` in the per-clone
+  state dir next to the claims (`<git-common-dir>/tatrs/serve.token`, or
+  `tasks/.tatrs/serve.token` without git), so an open board reconnects after a restart and the
+  printed URL survives a rebuild; delete the file to rotate it.
 - **Sweep** every `--poll` (default `1s`, `ms` suffix accepted). Per tick: `read_dir` + `stat` of each
   `TASK.md` and claim file; parse only changed files. Removed files are dropped from the cache.
 - **Snapshot** is bumped on every rebuild and broadcast as one `board` event:
@@ -457,7 +461,8 @@ the result is serialized once, versioned, and published to every subscriber thro
 - **Browsing** is off with `--no-browse`; otherwise `/api/tree` and `/api/file` serve only paths under
   the canonical root, never `.git`/`target`/`node_modules`/`.venv`/`dist`/`build`/`.tatrs`, never
   files above `--max-file` KiB, and never non-UTF-8 content.
-- **Read-only.** There are no mutating routes, so `--read-only` is trivially satisfied.
+- **Read-only.** There are no mutating routes, so `--read-only` is trivially satisfied. It also
+  keeps the token in memory instead of writing `serve.token`.
 
 ### Scale
 
@@ -474,6 +479,16 @@ anything changed.
   back to `notify` behind a feature flag.
 - The board needs more actions than D-006 allows: keep the allowlist small and route anything that
   edits prose, priority, or arbitrary tags through the CLI/MCP.
+
+### Amendment 2026-11-25: the token is per clone, not per session
+
+A per-session token could not survive a restart: `EventSource` gives up for good on the `401` it
+gets after retrying with the old token, so a board left open across `tatrs serve` (or a rebuild)
+stayed on "reconnecting…" forever. The token is now generated once per clone and kept in the state
+dir beside the claims, so both sides of a restart agree, and the URL printed by one run still works
+in the next. The trust model is unchanged — the file is `0600`, the bind is still loopback, and the
+token is a capability rather than a boundary — but the token now outlives the process, so rotating it
+means deleting `serve.token`. `--read-only` never writes it.
 
 ---
 
