@@ -119,6 +119,14 @@ $ tatrs serve --no-browse          # status only, no file browser
   passes its token in the `/events` query (cookies are shared by every `127.0.0.1` port) and, when
   the browser gives up on the stream after a non-2xx response, recreates it with capped backoff. A
   rejected token is terminal and says so: the server restarted, so reopen the URL it printed.
+- **The server does not drop streams; the client does.** A stream only ends when its socket does:
+  the pulse is a 15s comment, and the server logs nothing. Firefox cancels every in-flight
+  connection when the network state changes - `docker compose up`/`down` creating or removing a
+  `veth`, a VPN or Wi-Fi switch, or the machine resuming from suspend - so the console shows
+  `netInterrupt` for `/events` and the rail flickers `reconnecting…`. That is the client's
+  `NS_ERROR_ABORT`, not a server timeout: a raw `curl` client against the same server stays
+  connected for hours, including across a suspend. The board recovers by itself; if it does not,
+  the rail stays on `token rejected · reopen printed URL`.
 - **The board table is the working list.** One search box filters id, title, owner, tag, and flag
   text; every column header sorts, and the default is latest activity first (`since`, from
   `TASK.md`'s mtime), then creation time. A ticket edited today rises above one created earlier and
