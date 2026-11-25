@@ -989,6 +989,36 @@ fn http_get(addr: &str, target: &str) -> String {
     String::from_utf8_lossy(&response).into_owned()
 }
 
+/// Reads a live response until one complete `board` event has arrived. The
+/// stream never ends on its own, so this stops on content, not on EOF.
+fn http_push(addr: &str, target: &str) -> String {
+    let mut stream = std::net::TcpStream::connect(addr).unwrap();
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .unwrap();
+    write!(
+        stream,
+        "GET {target} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut response = Vec::new();
+    let mut chunk = [0u8; 4096];
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => {
+                response.extend_from_slice(&chunk[..read]);
+                let text = String::from_utf8_lossy(&response);
+                if text.contains("event: board") && text.ends_with("\n\n") {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    String::from_utf8_lossy(&response).into_owned()
+}
+
 fn http_json(response: &str) -> Value {
     let (head, body) = response.split_once("\r\n\r\n").expect("no headers");
     assert!(head.starts_with("HTTP/1.1 200"), "{head}");
@@ -1266,6 +1296,10 @@ fn serve_exposes_a_read_only_board() {
         page.contains("function backLink"),
         "back-link helper missing"
     );
+    assert!(
+        page.contains("EventSource.CLOSED"),
+        "the page must recover when the browser gives up on the stream"
+    );
 
     let escape = http_get(
         &addr,
@@ -1283,6 +1317,56 @@ fn serve_exposes_a_read_only_board() {
     std::thread::sleep(std::time::Duration::from_millis(600));
     let updated = http_json(&http_get(&addr, &format!("/api/status?t={token}")));
     assert!(updated["version"].as_u64() > status["version"].as_u64());
+
+    child.kill().unwrap();
+    let _ = child.wait();
+}
+
+#[test]
+fn serve_event_stream_accepts_the_url_token_and_hints_a_reconnect() {
+    let tmp = scratch();
+    init(tmp.path());
+    create(tmp.path(), "Live", &["bug"], 10);
+
+    let mut child = tatrs()
+        .current_dir(tmp.path())
+        .args(["serve", "--port", "0", "--poll", "200ms", "--json"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut line = String::new();
+    stdout.read_line(&mut line).unwrap();
+    let announced: Value = serde_json::from_str(line.trim()).unwrap();
+    let url = announced["url"].as_str().unwrap().to_owned();
+    let addr = url
+        .strip_prefix("http://")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    let token = url.split("t=").nth(1).unwrap().to_owned();
+
+    let anonymous = http_get(&addr, "/events");
+    assert!(anonymous.starts_with("HTTP/1.1 401"), "{anonymous}");
+
+    // The query token alone authorizes the stream, so a dropped or foreign
+    // cookie cannot leave an open board reconnecting against a 401.
+    let stream = http_push(&addr, &format!("/events?t={token}"));
+    assert!(stream.starts_with("HTTP/1.1 200"), "{stream}");
+    assert!(
+        stream.contains("Content-Type: text/event-stream"),
+        "{stream}"
+    );
+    assert!(
+        stream.contains("retry: 3000"),
+        "the stream must tell EventSource how long to wait: {stream}"
+    );
+    assert!(stream.contains("event: board"), "{stream}");
+    assert!(stream.contains("\"tasks\""), "{stream}");
 
     child.kill().unwrap();
     let _ = child.wait();

@@ -38,6 +38,14 @@ use crate::error::AppError;
 const DASHBOARD: &str = include_str!("../../assets/dashboard.html");
 const TOKEN_COOKIE: &str = "tatrs_token";
 const MAX_TREE_ENTRIES: usize = 20_000;
+/// Idle time on a `text/event-stream` before a keepalive comment is written.
+const KEEPALIVE: Duration = Duration::from_secs(15);
+/// A stream write may block this long before the subscriber counts as gone.
+/// Without it a client that stops reading pins its thread forever.
+const STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+/// Reconnect delay advertised to `EventSource`; a restarted server should not
+/// be hammered by every open board at once.
+const RECONNECT_HINT: &str = "retry: 3000\n";
 /// Directories that are never browsable: build output and credential stores.
 const BLOCKED: [&str; 7] = [
     ".git",
@@ -800,12 +808,14 @@ fn refresh_watcher(server: &Server) {
 }
 
 fn serve_events(mut stream: TcpStream, shared: &Shared) {
+    let _ = stream.set_write_timeout(Some(STREAM_WRITE_TIMEOUT));
     let headers = "HTTP/1.1 200 OK\r\n\
         Content-Type: text/event-stream\r\n\
         Cache-Control: no-store\r\n\
         Connection: close\r\n\
         X-Accel-Buffering: no\r\n\r\n";
     if stream.write_all(headers.as_bytes()).is_err()
+        || stream.write_all(RECONNECT_HINT.as_bytes()).is_err()
         || stream.write_all(b": connected\n\n").is_err()
     {
         return;
@@ -824,13 +834,15 @@ fn serve_events(mut stream: TcpStream, shared: &Shared) {
             continue;
         }
 
+        // A panic elsewhere must not end every future stream: recover the
+        // guard instead of treating poison as a reason to hang up.
         let state = match shared.state.lock() {
             Ok(state) => state,
-            Err(_) => return,
+            Err(poisoned) => poisoned.into_inner(),
         };
-        let (state, timeout) = match shared.signal.wait_timeout(state, Duration::from_secs(15)) {
+        let (state, timeout) = match shared.signal.wait_timeout(state, KEEPALIVE) {
             Ok(pair) => pair,
-            Err(_) => return,
+            Err(poisoned) => poisoned.into_inner(),
         };
         drop(state);
 

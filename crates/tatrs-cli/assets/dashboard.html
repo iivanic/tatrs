@@ -250,6 +250,7 @@ const state = {
   board: null, tree: null, openTree: new Set(), view: "", filter: null, taskId: null,
   taskSignature: null, taskRequest: 0, query: "", sort: { key: "activity", dir: "desc" }, boardFilter: null,
   lastRoute: null, connected: null,
+  source: null, retryDelay: 2000, authLost: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -295,6 +296,11 @@ function setConnection(state, text) {
 // Connection and data age are different facts: the dot says whether the event
 // stream is up, the text says when the tree last changed.
 function paintStatus() {
+  if (state.authLost) {
+    setConnection("off", "this page's token is not accepted; open the URL printed by `tatrs serve`");
+    $("updated").textContent = "token rejected · reopen printed URL";
+    return;
+  }
   if (state.connected === false) {
     setConnection("off", "disconnected, reconnecting");
     $("updated").textContent = "reconnecting…";
@@ -965,8 +971,20 @@ function route() {
 
 /* -------------------------------------------------------------------- live */
 
+const RETRY_BASE = 2000;
+const RETRY_MAX = 30000;
+
+// The token rides in the query as well as in the cookie: cookies are shared by
+// every server on 127.0.0.1 regardless of port, so a stale cookie from another
+// `tatrs serve` would otherwise make the stream fail with 401 forever.
+function streamQuery() {
+  const token = new URLSearchParams(location.search).get("t");
+  return token ? "?t=" + encodeURIComponent(token) : "";
+}
+
 function connect() {
-  const source = new EventSource("/events");
+  const source = new EventSource("/events" + streamQuery());
+  state.source = source;
   source.addEventListener("board", (event) => {
     let board;
     try {
@@ -994,12 +1012,45 @@ function connect() {
   });
   source.onopen = () => {
     state.connected = true;
+    state.authLost = false;
+    state.retryDelay = RETRY_BASE;
     paintStatus();
   };
   source.onerror = () => {
     state.connected = false;
     paintStatus();
+    // EventSource retries a dropped connection on its own, but a response that
+    // is not an event stream (401 after a restart, a proxy error page) closes
+    // it for good. Recreate it ourselves so the board recovers.
+    if (source.readyState === EventSource.CLOSED) scheduleReconnect(source);
   };
+}
+
+let reconnectTimer = null;
+
+function scheduleReconnect(source) {
+  if (state.source !== source || reconnectTimer !== null) return;
+  const delay = state.retryDelay;
+  state.retryDelay = Math.min(state.retryDelay * 2, RETRY_MAX);
+  reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
+    if (state.source !== source) return;
+    try {
+      const response = await fetch("/api/status" + streamQuery());
+      if (response.status === 401) {
+        // The server runs with another token, which only the URL it printed
+        // can fix. Say so, and keep probing slowly in case it changes back.
+        state.authLost = true;
+        state.retryDelay = RETRY_MAX;
+        paintStatus();
+        scheduleReconnect(source);
+        return;
+      }
+    } catch (err) {
+      // Unreachable right now; the fresh EventSource retries by itself.
+    }
+    connect();
+  }, delay);
 }
 
 window.addEventListener("hashchange", route);

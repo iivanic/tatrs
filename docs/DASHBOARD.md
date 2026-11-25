@@ -112,8 +112,13 @@ $ tatrs serve --no-browse          # status only, no file browser
   whose `(len, mtime)` changed. Idle trees cost one `stat` per task per tick and no parsing.
   This also catches writes from other worktrees, which inotify/FSEvents may not report.
 - **Push** is `text/event-stream`. Each change bumps `version` and broadcasts one `board` event
-  carrying the whole snapshot; a 15-second keepalive comment keeps proxies from closing the stream.
-  Clients use `EventSource`, which reconnects automatically after a restart.
+  carrying the whole snapshot; a 15-second keepalive comment keeps proxies from closing the stream,
+  and `retry: 3000` sets the browser's own reconnect delay.
+- **The board outlives a dropped stream.** A stream write that blocks for 30 seconds means the
+  subscriber is gone, so its thread is released instead of holding a connection forever. The page
+  passes its token in the `/events` query (cookies are shared by every `127.0.0.1` port) and, when
+  the browser gives up on the stream after a non-2xx response, recreates it with capped backoff. A
+  rejected token is terminal and says so: the server restarted, so reopen the URL it printed.
 - **The board table is the working list.** One search box filters id, title, owner, tag, and flag
   text; every column header sorts, and the default is latest activity first (`since`, from
   `TASK.md`'s mtime), then creation time. A ticket edited today rises above one created earlier and

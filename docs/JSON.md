@@ -225,12 +225,14 @@ Long-running and read-only. With `--json` it prints one object and keeps serving
 ```
 
 The URL carries a per-session capability token; opening it sets an `HttpOnly` cookie so the page's
-fetches and the event stream authenticate. All routes are `GET` and require the token:
+fetches and the event stream authenticate. Every route also accepts `?t=<token>`, which the page uses
+for the event stream so that a dropped or foreign cookie cannot break reconnects. All routes are
+`GET` and require the token:
 
 | Route | Body |
 | - | - |
 | `/` | the dashboard: one self-contained HTML file |
-| `/events` | `text/event-stream`; one `board` event per change, plus a comment keepalive |
+| `/events` | `text/event-stream`; `retry: 3000`, one `board` event per change, plus a comment keepalive every 15s |
 | `/api/status` | the latest snapshot (below) |
 | `/api/task/<HUID>` | a task object plus `lifecycle` and `files` |
 | `/api/tree` | `{"schema":1,"truncated":false,"entries":[{"path":"src/main.rs","dir":false}]}` |
