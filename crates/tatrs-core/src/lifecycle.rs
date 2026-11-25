@@ -90,7 +90,7 @@ pub enum Flag {
     Unverified,
     /// Closed and tagged `notify`: tell the owner.
     NotifyOwner,
-    /// Live lease with no task change for longer than the stale window.
+    /// Live lease held past the stale window with no task change since.
     Stalled,
     /// A lease expired without being released.
     ExpiredClaim,
@@ -242,9 +242,13 @@ pub fn classify(task: &Task, all: &[Task], claim: Option<&Claim>, ctx: Context) 
         if tags.contains(PAUSED_TAG) {
             flags.push(Flag::PausedButClaimed);
         }
-        let quiet_since = ctx
-            .last_activity
-            .or_else(|| live.and_then(|claim| time::parse_iso(&claim.acquired_at)));
+        // Acquiring the lease is activity: the quiet window opens at whichever
+        // came last, so a claim on an old file starts unstalled.
+        let acquired = live.and_then(|claim| time::parse_iso(&claim.acquired_at));
+        let quiet_since = match (ctx.last_activity, acquired) {
+            (Some(activity), Some(acquired)) => Some(activity.max(acquired)),
+            (activity, acquired) => activity.or(acquired),
+        };
         if quiet_since.is_some_and(|last| ctx.now - last > ctx.stale_after) {
             flags.push(Flag::Stalled);
         }
@@ -625,6 +629,31 @@ mod tests {
             Context::new(10_000).with_activity(Some(9_000)),
         );
         assert!(!fresh.flags.contains(&Flag::Stalled));
+    }
+
+    #[test]
+    fn claim_on_an_old_file_starts_unstalled() {
+        // The file has not moved for hours, but the lease was taken just now:
+        // the owner has had no chance to write anything yet.
+        let task = task("20261109-120000", &["agent"], "OPEN");
+        let claim = claim("20261109-120000", "agent-3", 9_000, 99_000);
+        let lifecycle = classify_one(
+            &task,
+            Some(&claim),
+            Context::new(10_000).with_activity(Some(1_000)),
+        );
+        assert_eq!(lifecycle.state, State::InProgress);
+        assert_eq!(lifecycle.since, Some(9_000));
+        assert!(!lifecycle.flags.contains(&Flag::Stalled));
+
+        // Once the lease itself is older than the stale window, it is stalled
+        // even though the file mtime says the same thing.
+        let later = classify_one(
+            &task,
+            Some(&claim),
+            Context::new(9_000 + DEFAULT_STALE_AFTER + 1).with_activity(Some(1_000)),
+        );
+        assert!(later.flags.contains(&Flag::Stalled));
     }
 
     #[test]

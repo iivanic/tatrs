@@ -72,12 +72,16 @@ Flags are orthogonal to the state. They are the part a human actually acts on.
 | - | - | - |
 | `unverified` | `CLOSED`, with at least one acceptance criterion still `- [ ]` | the task says done, its criteria say otherwise |
 | `notify-owner` | `CLOSED` and tagged `notify` | work is finished but the owner has not been told |
-| `stalled` | live lease, no file change for longer than `--stale` (default 2h) | the agent may be looping or dead while still holding the task |
+| `stalled` | live lease held past `--stale` (default 2h) with no `TASK.md` change since it was acquired | the agent may be looping or dead while still holding the task |
 | `expired-claim` | a lease exists but has expired, on an open task | a crashed worker; the task is stealable again |
 | `needs-human` | tagged `needs-human` | a decision is required, not more time |
 | `paused-but-claimed` | `paused` tag and a live lease | two conflicting signals; clean one of them up |
 | `claim-on-closed-task` | a lease exists for a `CLOSED` task | stale lease, or a worker that closed without releasing |
 | `placeholder` | still titled `New Task`, no tags, empty body | nobody can tell what it is; give it a title, tag, or body |
+
+The `stalled` quiet window opens at the later of the last `TASK.md` change and the lease's
+`acquired_at`: acquiring a lease is activity, so claiming a file nobody has touched for days is not
+a stall.
 
 `ready` is not a flag but is computed per task: it is exactly `docs/DECISIONS.md` D-001's dispatch
 rule (`ready::evaluate`), so the board and `tatrs ready` can never disagree.
