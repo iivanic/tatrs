@@ -17,10 +17,10 @@ if (-not (Test-Path $Binary)) {
 
 $version = $Version.TrimStart('v')
 $name = "tatrs-$version-$Target"
-$out = Join-Path $OutDir $name
 $stage = Join-Path ([System.IO.Path]::GetTempPath()) "$name-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
 
-New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+# Absolute, because the staging directory is the working directory while zipping.
+$OutDir = (New-Item -ItemType Directory -Force -Path $OutDir).FullName
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 try {
@@ -32,7 +32,25 @@ try {
     }
 
     $zip = Join-Path $OutDir "$name.zip"
-    Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
+    # `Compress-Archive` records no Unix permission bits, so `unzip` would leave
+    # the binary non-executable. `zip` keeps the mode and exists on the Unix
+    # runners; Windows runners fall back, where the mode does not matter.
+    $entries = @(Get-ChildItem -Path $stage -File | ForEach-Object { $_.Name })
+    if (Get-Command zip -ErrorAction SilentlyContinue) {
+        Push-Location $stage
+        try {
+            & zip -q $zip @entries
+            if ($LASTEXITCODE -ne 0) {
+                throw "zip exited with $LASTEXITCODE"
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+    else {
+        Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
+    }
 
     $hash = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     "$hash  $name.zip" | Set-Content -Path "$zip.sha256" -NoNewline

@@ -51,6 +51,7 @@ Prebuilt binaries are published with each `v*` tag as
 curl -LO https://github.com/iivanic/tatrs/releases/download/v0.2.1/tatrs-0.2.1-x86_64-unknown-linux-musl.zip
 sha256sum -c tatrs-0.2.1-x86_64-unknown-linux-musl.zip.sha256
 unzip tatrs-0.2.1-x86_64-unknown-linux-musl.zip -d ~/.local/bin
+chmod +x ~/.local/bin/tatrs
 ```
 
 A container image for agent sandboxes can be built from the repo:

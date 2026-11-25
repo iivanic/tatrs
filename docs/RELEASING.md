@@ -21,7 +21,9 @@
 
    Each target produces `tatrs-<version>-<target>.zip` (binary, README, LICENSE)
    and a `.sha256` checksum, attached to the GitHub release with generated
-   notes.
+   notes. The zip keeps the binary's Unix mode, so `unzip` yields an executable
+   `tatrs`: packaging uses `zip` on the Unix runners and falls back to
+   `Compress-Archive` on Windows, which cannot record the mode.
 
 ## Doing it by hand
 
@@ -43,6 +45,7 @@ Windows during development; the first tagged run is the cross-platform proof.
 ```console
 sha256sum -c tatrs-0.2.1-x86_64-unknown-linux-musl.zip.sha256
 unzip tatrs-0.2.1-x86_64-unknown-linux-musl.zip -d ~/.local/bin
+chmod +x ~/.local/bin/tatrs   # zips cut before 0.2.2 store the binary as 0644
 tatrs version        # prints the commit stamped at build time
 ```
 
