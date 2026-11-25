@@ -340,7 +340,7 @@ D-006.
 ## `tatrs version --json`
 
 ```json
-{"schema": 1, "name": "tatrs", "version": "0.2.0", "commit": null}
+{"schema": 1, "name": "tatrs", "version": "0.2.1", "commit": null}
 ```
 
 `commit` is `null` for local builds; release builds set `TATRS_GIT_COMMIT` at compile time.
